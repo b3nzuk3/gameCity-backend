@@ -4,6 +4,7 @@ const Product = require('../models/productModel')
 const mongoose = require('mongoose')
 const multer = require('multer')
 const cloudinary = require('../utils/cloudinary')
+const cacheMiddleware = require('../middleware/cacheMiddleware')
 const {
   getProducts,
   getProductById,
@@ -68,31 +69,44 @@ function uploadToCloudinary(buffer, folder = 'products') {
   })
 }
 
-// Get all products
-router.get('/', async (req, res) => {
+// Get all products with pagination, filtering, and sorting
+router.get('/', cacheMiddleware(300), async (req, res) => {
   try {
-    const { category } = req.query
+    const page = parseInt(req.query.page) || 1
+    const limit = parseInt(req.query.limit) || 10
+    const category = req.query.category
+    const sort = req.query.sort || '-createdAt'
+    const search = req.query.search
 
-    // If MongoDB is connected and Product model is available, fetch from DB
-    if (mongoose.connection.readyState === 1 && Product) {
-      const query = {}
-      if (category && category !== 'all') {
-        query.category = category
-      }
-      const products = await Product.find(query).lean()
-      const normalized = products.map((p) => ({
-        ...p,
-        id: p._id.toString(),
-      }))
-      return res.json(normalized)
-    }
+    const query = {}
 
-    // Otherwise, use mock data
-    let products = [...mockProducts]
     if (category && category !== 'all') {
-      products = products.filter((p) => p.category === category)
+      query.category = category
     }
-    res.json(products)
+
+    if (search) {
+      query.$or = [
+        { name: { $regex: search, $options: 'i' } },
+        { description: { $regex: search, $options: 'i' } },
+      ]
+    }
+
+    const skip = (page - 1) * limit
+
+    const [products, total] = await Promise.all([
+      Product.find(query).sort(sort).skip(skip).limit(limit).lean(),
+      Product.countDocuments(query),
+    ])
+
+    const totalPages = Math.ceil(total / limit)
+
+    res.json({
+      products: products.map((p) => ({ ...p, id: p._id.toString() })),
+      page,
+      pages: totalPages,
+      total,
+      hasMore: page < totalPages,
+    })
   } catch (error) {
     console.error('Error fetching products:', error)
     res.status(500).json({
@@ -102,29 +116,19 @@ router.get('/', async (req, res) => {
   }
 })
 
-// Get product by ID
-router.get('/:id', async (req, res) => {
+// Get product by ID with caching
+router.get('/:id', cacheMiddleware(300), async (req, res) => {
   try {
-    // If MongoDB is connected and Product model is available, fetch from DB
-    if (mongoose.connection.readyState === 1 && Product) {
-      const product = await Product.findById(req.params.id).lean()
-      if (!product) {
-        return res.status(404).json({
-          success: false,
-          error: 'Product not found',
-        })
-      }
-      return res.json({ ...product, id: product._id.toString() })
-    }
-    // Otherwise, use mock data
-    const product = mockProducts.find((p) => p.id === req.params.id)
+    const product = await Product.findById(req.params.id).lean()
+
     if (!product) {
       return res.status(404).json({
         success: false,
         error: 'Product not found',
       })
     }
-    res.json(product)
+
+    res.json({ ...product, id: product._id.toString() })
   } catch (error) {
     console.error('Error fetching product:', error)
     res.status(500).json({
@@ -134,20 +138,31 @@ router.get('/:id', async (req, res) => {
   }
 })
 
-// Get products by category
-router.get('/category/:category', (req, res) => {
+// Get products by category with caching
+router.get('/category/:category', cacheMiddleware(300), async (req, res) => {
   try {
     const { category } = req.params
+    const page = parseInt(req.query.page) || 1
+    const limit = parseInt(req.query.limit) || 10
+    const sort = req.query.sort || '-createdAt'
 
-    if (category === 'all') {
-      // Return just the products array as expected by the frontend
-      return res.json(mockProducts)
-    }
+    const query = category === 'all' ? {} : { category }
+    const skip = (page - 1) * limit
 
-    const products = mockProducts.filter((p) => p.category === category)
+    const [products, total] = await Promise.all([
+      Product.find(query).sort(sort).skip(skip).limit(limit).lean(),
+      Product.countDocuments(query),
+    ])
 
-    // Return just the products array as expected by the frontend
-    res.json(products)
+    const totalPages = Math.ceil(total / limit)
+
+    res.json({
+      products: products.map((p) => ({ ...p, id: p._id.toString() })),
+      page,
+      pages: totalPages,
+      total,
+      hasMore: page < totalPages,
+    })
   } catch (error) {
     console.error('Error fetching products by category:', error)
     res.status(500).json({
@@ -161,35 +176,41 @@ router.get('/category/:category', (req, res) => {
 // These should be protected in production
 
 // Create product with image upload to Cloudinary
-router.post('/add', upload.single('image'), async (req, res) => {
-  try {
-    console.log('Product add request body:', req.body) // Debug log
-    const { name, price, count_in_stock, ...otherFields } = req.body
-    let imageUrl = ''
+router.post(
+  '/add',
+  protect,
+  admin,
+  upload.single('image'),
+  async (req, res) => {
+    try {
+      console.log('Product add request body:', req.body) // Debug log
+      const { name, price, count_in_stock, ...otherFields } = req.body
+      let imageUrl = ''
 
-    if (req.file) {
-      const result = await uploadToCloudinary(req.file.buffer, 'products')
-      imageUrl = result.secure_url
+      if (req.file) {
+        const result = await uploadToCloudinary(req.file.buffer, 'products')
+        imageUrl = result.secure_url
+      }
+
+      const product = new Product({
+        name,
+        price,
+        image: imageUrl,
+        countInStock: Number(count_in_stock),
+        ...otherFields,
+      })
+
+      await product.save()
+      res.status(201).json(product)
+    } catch (error) {
+      console.error('Product upload error:', error)
+      res.status(500).json({ error: 'Failed to add product' })
     }
-
-    const product = new Product({
-      name,
-      price,
-      image: imageUrl,
-      countInStock: Number(count_in_stock),
-      ...otherFields,
-    })
-
-    await product.save()
-    res.status(201).json(product)
-  } catch (error) {
-    console.error('Product upload error:', error)
-    res.status(500).json({ error: 'Failed to add product' })
   }
-})
+)
 
 // Update product (supports MongoDB and FormData)
-router.put('/:id', upload.single('image'), async (req, res) => {
+router.put('/:id', protect, admin, upload.single('image'), async (req, res) => {
   try {
     // If MongoDB is connected and Product model is available, update in DB
     if (mongoose.connection.readyState === 1 && Product) {
@@ -241,7 +262,7 @@ router.put('/:id', upload.single('image'), async (req, res) => {
 })
 
 // Delete product (supports MongoDB and mock data)
-router.delete('/:id', async (req, res) => {
+router.delete('/:id', protect, admin, async (req, res) => {
   try {
     // If MongoDB is connected and Product model is available, delete from DB
     if (mongoose.connection.readyState === 1 && Product) {

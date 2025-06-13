@@ -3,6 +3,9 @@ const mongoose = require('mongoose')
 const cors = require('cors')
 const dotenv = require('dotenv')
 const path = require('path')
+const helmet = require('helmet')
+const compression = require('compression')
+const rateLimit = require('express-rate-limit')
 const userRoutes = require('./routes/userRoutes')
 const productRoutes = require('./routes/productRoutes')
 const orderRoutes = require('./routes/orderRoutes')
@@ -35,6 +38,20 @@ console.log('Loaded environment variables:', {
 const app = express()
 const port = process.env.PORT || 5001
 
+// Security middleware
+app.use(helmet())
+
+// Compression middleware
+app.use(compression())
+
+// Rate limiting
+const limiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 100, // Limit each IP to 100 requests per windowMs
+  message: 'Too many requests from this IP, please try again later.',
+})
+app.use('/api/', limiter)
+
 // Middleware
 app.use(
   cors({
@@ -46,13 +63,19 @@ app.use(
     allowedHeaders: ['Content-Type', 'Authorization'],
   })
 )
-app.use(express.json())
-app.use(express.urlencoded({ extended: true }))
+app.use(express.json({ limit: '10mb' }))
+app.use(express.urlencoded({ extended: true, limit: '10mb' }))
 
 // Connect to MongoDB (if URI is provided)
 if (process.env.MONGODB_URI) {
   mongoose
-    .connect(process.env.MONGODB_URI)
+    .connect(process.env.MONGODB_URI, {
+      useNewUrlParser: true,
+      useUnifiedTopology: true,
+      maxPoolSize: 10,
+      serverSelectionTimeoutMS: 5000,
+      socketTimeoutMS: 45000,
+    })
     .then(() => console.log('Connected to MongoDB'))
     .catch((err) => {
       console.error('MongoDB connection error:', err)
@@ -98,6 +121,8 @@ app.get('/health', (req, res) => {
     status: 'ok',
     mongodb:
       mongoose.connection.readyState === 1 ? 'connected' : 'disconnected',
+    uptime: process.uptime(),
+    timestamp: Date.now(),
   })
 })
 
@@ -115,7 +140,10 @@ app.use((err, req, res, next) => {
   console.error('Server error:', err)
   res.status(500).json({
     success: false,
-    error: err.message || 'Something went wrong!',
+    error:
+      process.env.NODE_ENV === 'production'
+        ? 'Something went wrong!'
+        : err.message,
   })
 })
 
