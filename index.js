@@ -63,7 +63,7 @@ app.use(
     ],
     credentials: true,
     allowedHeaders: ['Content-Type', 'Authorization'],
-    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
   })
 )
 app.use(express.json({ limit: '10mb' }))

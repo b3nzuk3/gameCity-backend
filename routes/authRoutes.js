@@ -132,4 +132,61 @@ router.get('/me', protect, async (req, res) => {
   res.json({ user: req.user })
 })
 
+// Password reset request
+router.post('/reset-password', async (req, res) => {
+  const { email } = req.body
+  if (!email) {
+    return res.status(400).json({ error: 'Email is required' })
+  }
+  const user = await User.findOne({ email })
+  if (!user) {
+    return res.status(404).json({ error: 'No user found with that email' })
+  }
+  // Generate reset token
+  const resetToken = crypto.randomBytes(32).toString('hex')
+  user.resetPasswordToken = resetToken
+  user.resetPasswordExpires = Date.now() + 3600000 // 1 hour
+  await user.save()
+
+  // Send email (demo: log to console)
+  const resetUrl = `${req.protocol}://${req.get(
+    'host'
+  )}/reset-password/${resetToken}`
+  const transporter = nodemailer.createTransport({
+    service: 'gmail',
+    auth: {
+      user: process.env.EMAIL_USER,
+      pass: process.env.EMAIL_PASS,
+    },
+  })
+  await transporter.sendMail({
+    from: 'no-reply@gamecity.com',
+    to: user.email,
+    subject: 'Password Reset',
+    html: `<p>Hi ${user.name},</p><p>Click <a href="${resetUrl}">here</a> to reset your password. This link will expire in 1 hour.</p>`,
+  })
+  res.json({ message: 'Password reset instructions sent to your email.' })
+})
+
+// Password reset (set new password)
+router.post('/reset-password/:token', async (req, res) => {
+  const { token } = req.params
+  const { password } = req.body
+  if (!password) {
+    return res.status(400).json({ error: 'Password is required' })
+  }
+  const user = await User.findOne({
+    resetPasswordToken: token,
+    resetPasswordExpires: { $gt: Date.now() },
+  })
+  if (!user) {
+    return res.status(400).json({ error: 'Invalid or expired token' })
+  }
+  user.password = password
+  user.resetPasswordToken = undefined
+  user.resetPasswordExpires = undefined
+  await user.save()
+  res.json({ message: 'Password has been reset successfully.' })
+})
+
 module.exports = router
