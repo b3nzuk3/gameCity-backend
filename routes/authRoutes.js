@@ -172,6 +172,7 @@ router.post('/reset-password', async (req, res) => {
 router.post('/reset-password/:token', async (req, res) => {
   const { token } = req.params
   const { password } = req.body
+  console.log('Received token:', token)
   if (!password) {
     return res.status(400).json({ error: 'Password is required' })
   }
@@ -179,6 +180,7 @@ router.post('/reset-password/:token', async (req, res) => {
     resetPasswordToken: token,
     resetPasswordExpires: { $gt: Date.now() },
   })
+  console.log('User found for token:', user)
   if (!user) {
     return res.status(400).json({ error: 'Invalid or expired token' })
   }
