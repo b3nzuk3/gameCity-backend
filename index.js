@@ -55,12 +55,15 @@ app.use('/api/', limiter)
 // Middleware
 app.use(
   cors({
-    origin: process.env.ALLOWED_ORIGINS?.split(',') || [
+    origin: [
+      'https://game-city-one.vercel.app',
       'http://localhost:5173',
+      'http://localhost:3000',
       'http://localhost:8080',
     ],
-    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    credentials: true,
     allowedHeaders: ['Content-Type', 'Authorization'],
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   })
 )
 app.use(express.json({ limit: '10mb' }))
