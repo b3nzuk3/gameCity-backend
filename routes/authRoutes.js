@@ -148,10 +148,10 @@ router.post('/reset-password', async (req, res) => {
   user.resetPasswordExpires = Date.now() + 3600000 // 1 hour
   await user.save()
 
-  // Send email (demo: log to console)
-  const resetUrl = `${req.protocol}://${req.get(
-    'host'
-  )}/reset-password/${resetToken}`
+  // Use frontend URL for reset link
+  const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173'
+  const resetUrl = `${frontendUrl}/reset-password/${resetToken}`
+
   const transporter = nodemailer.createTransport({
     service: 'gmail',
     auth: {
