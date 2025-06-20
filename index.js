@@ -56,6 +56,7 @@ app.use('/api/', limiter)
 app.use(
   cors({
     origin: [
+      'https://www.gamecityelectronics.com',
       'https://game-city-one.vercel.app',
       'http://localhost:5173',
       'http://localhost:3000',
