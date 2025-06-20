@@ -237,6 +237,34 @@ const hasUserPurchasedProduct = async (req, res) => {
   }
 }
 
+// @desc    Get all unique brands
+// @route   GET /api/products/brands
+// @access  Public
+const getUniqueBrands = async (req, res) => {
+  try {
+    // Add timeout to the distinct operation
+    const brands = await Product.distinct('brand').maxTimeMS(5000)
+    res.json(brands.filter(Boolean).sort()) // Filter out null/empty brands and sort them
+  } catch (error) {
+    console.error('Error fetching unique brands:', error)
+
+    // Fallback: try a simpler query if distinct times out
+    try {
+      console.log('Attempting fallback query for brands...')
+      const products = await Product.find({}, 'brand')
+        .limit(1000)
+        .maxTimeMS(5000)
+      const brands = [
+        ...new Set(products.map((p) => p.brand).filter(Boolean)),
+      ].sort()
+      res.json(brands)
+    } catch (fallbackError) {
+      console.error('Fallback query also failed:', fallbackError)
+      res.status(500).json({ message: 'Server error while fetching brands' })
+    }
+  }
+}
+
 module.exports = {
   getProducts,
   getProductById,
@@ -245,4 +273,5 @@ module.exports = {
   deleteProduct,
   createProductReview,
   hasUserPurchasedProduct,
+  getUniqueBrands,
 }

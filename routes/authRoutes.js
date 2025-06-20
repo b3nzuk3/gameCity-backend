@@ -34,13 +34,13 @@ router.post('/register', async (req, res) => {
     if (!name || !email || !password) {
       return res
         .status(400)
-        .json({ error: 'Name, email, and password are required' })
+        .json({ message: 'Name, email, and password are required' })
     }
     const existingUser = await User.findOne({ email })
     if (existingUser) {
       return res
         .status(400)
-        .json({ error: 'User already exists with this email' })
+        .json({ message: 'User already exists with this email' })
     }
     // Generate verification token
     const verificationToken = crypto.randomBytes(32).toString('hex')
@@ -66,7 +66,7 @@ router.post('/register', async (req, res) => {
     })
   } catch (error) {
     console.error('Registration error:', error)
-    res.status(500).json({ error: 'Server error' })
+    res.status(500).json({ message: 'Server error' })
   }
 })
 
@@ -74,17 +74,17 @@ router.post('/register', async (req, res) => {
 router.get('/verify-email', async (req, res) => {
   try {
     const { token } = req.query
-    if (!token) return res.status(400).json({ error: 'No token provided' })
+    if (!token) return res.status(400).json({ message: 'No token provided' })
     const user = await User.findOne({ verificationToken: token })
     if (!user)
-      return res.status(400).json({ error: 'Invalid or expired token' })
+      return res.status(400).json({ message: 'Invalid or expired token' })
     user.isVerified = true
     user.verificationToken = undefined
     await user.save()
     res.send('<h2>Email verified! You can now log in.</h2>')
   } catch (error) {
     console.error('Email verification error:', error)
-    res.status(500).json({ error: 'Server error' })
+    res.status(500).json({ message: 'Server error' })
   }
 })
 
@@ -93,20 +93,22 @@ router.post('/login', async (req, res) => {
   try {
     const { email, password } = req.body
     if (!email || !password) {
-      return res.status(400).json({ error: 'Email and password are required' })
+      return res
+        .status(400)
+        .json({ message: 'Email and password are required' })
     }
     const user = await User.findOne({ email })
     if (!user) {
-      return res.status(401).json({ error: 'Invalid credentials' })
+      return res.status(401).json({ message: 'Invalid credentials' })
     }
     const isMatch = await user.matchPassword(password)
     if (!isMatch) {
-      return res.status(401).json({ error: 'Invalid credentials' })
+      return res.status(401).json({ message: 'Invalid credentials' })
     }
     if (!user.isVerified) {
       return res
         .status(403)
-        .json({ error: 'Please verify your email before logging in.' })
+        .json({ message: 'Please verify your email before logging in.' })
     }
     // Generate JWT token
     const token = jwt.sign(
@@ -125,14 +127,14 @@ router.post('/login', async (req, res) => {
     })
   } catch (error) {
     console.error('Login error:', error)
-    res.status(500).json({ error: 'Internal server error' })
+    res.status(500).json({ message: 'Internal server error' })
   }
 })
 
 // Get current user
 router.get('/me', protect, async (req, res) => {
   if (!req.user) {
-    return res.status(401).json({ error: 'Not authenticated' })
+    return res.status(401).json({ message: 'Not authenticated' })
   }
   res.json({
     user: {
@@ -148,11 +150,11 @@ router.get('/me', protect, async (req, res) => {
 router.post('/reset-password', async (req, res) => {
   const { email } = req.body
   if (!email) {
-    return res.status(400).json({ error: 'Email is required' })
+    return res.status(400).json({ message: 'Email is required' })
   }
   const user = await User.findOne({ email })
   if (!user) {
-    return res.status(404).json({ error: 'No user found with that email' })
+    return res.status(404).json({ message: 'No user found with that email' })
   }
   // Generate reset token
   const resetToken = crypto.randomBytes(32).toString('hex')
@@ -186,7 +188,7 @@ router.post('/reset-password/:token', async (req, res) => {
   const { password } = req.body
   console.log('Received token:', token)
   if (!password) {
-    return res.status(400).json({ error: 'Password is required' })
+    return res.status(400).json({ message: 'Password is required' })
   }
   const user = await User.findOne({
     resetPasswordToken: token,
@@ -194,7 +196,7 @@ router.post('/reset-password/:token', async (req, res) => {
   })
   console.log('User found for token:', user)
   if (!user) {
-    return res.status(400).json({ error: 'Invalid or expired token' })
+    return res.status(400).json({ message: 'Invalid or expired token' })
   }
   user.password = password
   user.resetPasswordToken = undefined

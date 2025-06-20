@@ -1,4 +1,5 @@
 const Order = require('../models/orderModel')
+const Product = require('../models/productModel')
 const mongoose = require('mongoose')
 
 // @desc    Create new order
@@ -88,6 +89,20 @@ const updateOrderToDelivered = async (req, res) => {
     const order = await Order.findById(req.params.id)
 
     if (order) {
+      if (order.isDelivered) {
+        res.status(400)
+        throw new Error('Order is already delivered')
+      }
+
+      // Update product stock
+      for (const item of order.order_items) {
+        const product = await Product.findById(item.product)
+        if (product) {
+          product.count_in_stock -= item.quantity
+          await product.save()
+        }
+      }
+
       order.isDelivered = true
       order.deliveredAt = Date.now()
       order.status = 'Delivered'
@@ -100,7 +115,9 @@ const updateOrderToDelivered = async (req, res) => {
       throw new Error('Order not found')
     }
   } catch (error) {
-    res.status(404).json({ message: 'Order not found' })
+    res
+      .status(res.statusCode === 200 ? 500 : res.statusCode)
+      .json({ message: error.message })
   }
 }
 
@@ -108,27 +125,50 @@ const updateOrderToDelivered = async (req, res) => {
 // @route   PUT /api/orders/:id/status
 // @access  Private/Admin
 const updateOrderStatus = async (req, res) => {
-  console.log('updateOrderStatus called with:', req.params.id, req.body)
   try {
-    console.log('About to cast to ObjectId:', req.params.id)
-    const objectId = new mongoose.Types.ObjectId(req.params.id)
-    console.log('ObjectId created:', objectId)
-    const order = await Order.findById(objectId)
-    console.log('Order found:', order)
+    const order = await Order.findById(req.params.id)
 
     if (order) {
-      order.status = req.body.status
+      const newStatus = req.body.status
+      const isCompleting = newStatus === 'completed' && !order.isDelivered
+      const isReverting = newStatus === 'pending' && order.isDelivered
+
+      order.status = newStatus
+
+      if (isCompleting) {
+        order.isDelivered = true
+        order.deliveredAt = Date.now()
+
+        // Decrease stock
+        for (const item of order.orderItems) {
+          const product = await Product.findById(item.product)
+          if (product) {
+            product.countInStock -= item.quantity
+            await product.save()
+          }
+        }
+      } else if (isReverting) {
+        order.isDelivered = false
+        order.deliveredAt = null // or undefined
+
+        // Increase stock
+        for (const item of order.orderItems) {
+          const product = await Product.findById(item.product)
+          if (product) {
+            product.countInStock += item.quantity
+            await product.save()
+          }
+        }
+      }
 
       const updatedOrder = await order.save()
-
       res.json(updatedOrder)
     } else {
-      res.status(404)
-      throw new Error('Order not found')
+      res.status(404).json({ message: 'Order not found' })
     }
   } catch (error) {
     console.error('Error in updateOrderStatus:', error)
-    res.status(404).json({ message: 'Order not found' })
+    res.status(500).json({ message: 'Server error while updating status' })
   }
 }
 
@@ -149,8 +189,33 @@ const getMyOrders = async (req, res) => {
 // @access  Private/Admin
 const getOrders = async (req, res) => {
   try {
-    const orders = await Order.find({}).populate('user', 'id name')
-    res.json(orders)
+    const orders = await Order.find({})
+      .populate('user', 'id name')
+      .populate('orderItems.product')
+
+    const formattedOrders = orders.map((order) => ({
+      id: order._id,
+      user: order.user,
+      order_items: order.orderItems.map((item) => ({
+        product: item.product,
+        name: item.name,
+        quantity: item.quantity,
+        price: item.price,
+        image: item.image,
+      })),
+      paymentMethod: order.paymentMethod,
+      payment_result: order.paymentResult,
+      total_price: order.totalPrice,
+      is_paid: order.isPaid,
+      paid_at: order.paidAt,
+      is_delivered: order.isDelivered,
+      delivered_at: order.deliveredAt,
+      status: order.status,
+      createdAt: order.createdAt,
+      updatedAt: order.updatedAt,
+    }))
+
+    res.json(formattedOrders)
   } catch (error) {
     res.status(500).json({ message: 'Server error' })
   }

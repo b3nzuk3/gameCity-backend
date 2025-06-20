@@ -13,6 +13,7 @@ const {
   deleteProduct,
   createProductReview,
   hasUserPurchasedProduct,
+  getUniqueBrands,
 } = require('../controllers/productController')
 const { protect, admin } = require('../middleware/authMiddleware')
 
@@ -117,6 +118,8 @@ router.get('/', cacheMiddleware(300), async (req, res) => {
   }
 })
 
+router.get('/brands', getUniqueBrands)
+
 // Get product by ID with caching
 router.get('/:id', cacheMiddleware(300), async (req, res) => {
   try {
@@ -173,130 +176,15 @@ router.get('/category/:category', cacheMiddleware(300), async (req, res) => {
   }
 })
 
-// Admin routes below this point
-// These should be protected in production
-
-// Create product with image upload to Cloudinary
-router.post('/', protect, admin, upload.single('image'), async (req, res) => {
-  try {
-    console.log('Product add request body:', req.body) // Debug log
-    const { name, price, count_in_stock, ...otherFields } = req.body
-    let imageUrl = ''
-
-    if (req.file) {
-      const result = await uploadToCloudinary(req.file.buffer, 'products')
-      imageUrl = result.secure_url
-    }
-
-    const product = new Product({
-      name,
-      price,
-      image: imageUrl,
-      countInStock: Number(count_in_stock),
-      ...otherFields,
-    })
-
-    await product.save()
-    await clearCache() // Clear product cache
-    res.status(201).json(product)
-  } catch (error) {
-    console.error('Product upload error:', error)
-    res.status(500).json({ error: 'Failed to add product' })
-  }
-})
-
-// Update product (supports MongoDB and FormData)
-router.put('/:id', protect, admin, upload.single('image'), async (req, res) => {
-  try {
-    // If MongoDB is connected and Product model is available, update in DB
-    if (mongoose.connection.readyState === 1 && Product) {
-      const updateData = { ...req.body }
-
-      // If an image is uploaded, handle Cloudinary upload
-      if (req.file) {
-        const result = await uploadToCloudinary(req.file.buffer, 'products')
-        updateData.image = result.secure_url
-      }
-
-      // Convert count_in_stock to number if present
-      if (updateData.count_in_stock) {
-        updateData.countInStock = Number(updateData.count_in_stock)
-        delete updateData.count_in_stock
-      }
-
-      const updatedProduct = await Product.findByIdAndUpdate(
-        req.params.id,
-        updateData,
-        { new: true }
-      )
-
-      if (!updatedProduct) {
-        return res
-          .status(404)
-          .json({ success: false, error: 'Product not found' })
-      }
-
-      await clearCache() // Clear product cache
-      return res.json({
-        ...updatedProduct.toObject(),
-        id: updatedProduct._id.toString(),
-      })
-    }
-
-    // Otherwise, update mock data
-    const index = mockProducts.findIndex((p) => p.id === req.params.id)
-    if (index === -1) {
-      return res
-        .status(404)
-        .json({ success: false, error: 'Product not found' })
-    }
-    mockProducts[index] = { ...mockProducts[index], ...req.body }
-    res.json(mockProducts[index])
-  } catch (error) {
-    console.error('Error updating product:', error)
-    res.status(500).json({ success: false, error: 'Failed to update product' })
-  }
-})
-
-// Delete product (supports MongoDB and mock data)
-router.delete('/:id', protect, admin, async (req, res) => {
-  try {
-    // If MongoDB is connected and Product model is available, delete from DB
-    if (mongoose.connection.readyState === 1 && Product) {
-      const deletedProduct = await Product.findByIdAndDelete(req.params.id)
-      if (!deletedProduct) {
-        return res
-          .status(404)
-          .json({ success: false, error: 'Product not found' })
-      }
-      await clearCache() // Clear product cache
-      return res.json({
-        success: true,
-        message: 'Product deleted successfully',
-      })
-    }
-
-    // Otherwise, delete from mock data
-    const index = mockProducts.findIndex((p) => p.id === req.params.id)
-    if (index === -1) {
-      return res
-        .status(404)
-        .json({ success: false, error: 'Product not found' })
-    }
-    mockProducts.splice(index, 1)
-
-    res.json({
-      success: true,
-      message: 'Product deleted successfully',
-    })
-  } catch (error) {
-    console.error('Error deleting product:', error)
-    res.status(500).json({ success: false, error: 'Failed to delete product' })
-  }
-})
-
-router.route('/').get(getProducts).post(protect, admin, createProduct)
+// Protected routes for reviews
 router.route('/:id/reviews').post(protect, createProductReview)
 router.route('/:id/has-purchased').get(protect, hasUserPurchasedProduct)
+
+// Admin routes
+router.route('/').post(protect, admin, createProduct)
+router
+  .route('/:id')
+  .put(protect, admin, updateProduct)
+  .delete(protect, admin, deleteProduct)
 
 module.exports = router
