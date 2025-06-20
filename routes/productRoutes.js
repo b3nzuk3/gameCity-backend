@@ -4,7 +4,7 @@ const Product = require('../models/productModel')
 const mongoose = require('mongoose')
 const multer = require('multer')
 const cloudinary = require('../utils/cloudinary')
-const cacheMiddleware = require('../middleware/cacheMiddleware')
+const { cacheMiddleware, clearCache } = require('../middleware/cacheMiddleware')
 const {
   getProducts,
   getProductById,
@@ -81,7 +81,7 @@ router.get('/', cacheMiddleware(300), async (req, res) => {
     const query = {}
 
     if (category && category !== 'all') {
-      query.category = category
+      query.category = { $regex: category.replace(/-/g, ' '), $options: 'i' }
     }
 
     if (search) {
@@ -176,38 +176,33 @@ router.get('/category/:category', cacheMiddleware(300), async (req, res) => {
 // These should be protected in production
 
 // Create product with image upload to Cloudinary
-router.post(
-  '/add',
-  protect,
-  admin,
-  upload.single('image'),
-  async (req, res) => {
-    try {
-      console.log('Product add request body:', req.body) // Debug log
-      const { name, price, count_in_stock, ...otherFields } = req.body
-      let imageUrl = ''
+router.post('/', protect, admin, upload.single('image'), async (req, res) => {
+  try {
+    console.log('Product add request body:', req.body) // Debug log
+    const { name, price, count_in_stock, ...otherFields } = req.body
+    let imageUrl = ''
 
-      if (req.file) {
-        const result = await uploadToCloudinary(req.file.buffer, 'products')
-        imageUrl = result.secure_url
-      }
-
-      const product = new Product({
-        name,
-        price,
-        image: imageUrl,
-        countInStock: Number(count_in_stock),
-        ...otherFields,
-      })
-
-      await product.save()
-      res.status(201).json(product)
-    } catch (error) {
-      console.error('Product upload error:', error)
-      res.status(500).json({ error: 'Failed to add product' })
+    if (req.file) {
+      const result = await uploadToCloudinary(req.file.buffer, 'products')
+      imageUrl = result.secure_url
     }
+
+    const product = new Product({
+      name,
+      price,
+      image: imageUrl,
+      countInStock: Number(count_in_stock),
+      ...otherFields,
+    })
+
+    await product.save()
+    await clearCache() // Clear product cache
+    res.status(201).json(product)
+  } catch (error) {
+    console.error('Product upload error:', error)
+    res.status(500).json({ error: 'Failed to add product' })
   }
-)
+})
 
 // Update product (supports MongoDB and FormData)
 router.put('/:id', protect, admin, upload.single('image'), async (req, res) => {
@@ -240,6 +235,7 @@ router.put('/:id', protect, admin, upload.single('image'), async (req, res) => {
           .json({ success: false, error: 'Product not found' })
       }
 
+      await clearCache() // Clear product cache
       return res.json({
         ...updatedProduct.toObject(),
         id: updatedProduct._id.toString(),
@@ -272,6 +268,7 @@ router.delete('/:id', protect, admin, async (req, res) => {
           .status(404)
           .json({ success: false, error: 'Product not found' })
       }
+      await clearCache() // Clear product cache
       return res.json({
         success: true,
         message: 'Product deleted successfully',

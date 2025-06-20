@@ -56,4 +56,27 @@ const cacheMiddleware = (duration) => {
   }
 }
 
-module.exports = cacheMiddleware
+const clearCache = async (prefix = 'cache:/api/products') => {
+  try {
+    const stream = redis.scanStream({
+      match: `${prefix}*`,
+      count: 100,
+    })
+    const keysToDelete = []
+    stream.on('data', (keys) => {
+      if (keys.length) {
+        keysToDelete.push(...keys)
+      }
+    })
+    stream.on('end', async () => {
+      if (keysToDelete.length > 0) {
+        await redis.del(keysToDelete)
+        console.log(`Cleared cache for keys: ${keysToDelete.join(', ')}`)
+      }
+    })
+  } catch (error) {
+    console.error('Error clearing cache:', error)
+  }
+}
+
+module.exports = { cacheMiddleware, clearCache }

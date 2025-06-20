@@ -119,13 +119,12 @@ app.use('/api/cart', cartRoutes)
 app.use('/api/upload', uploadRoutes)
 
 // Health check endpoint
-app.get('/health', (req, res) => {
+app.get('/api/health', (req, res) => {
   res.json({
-    status: 'ok',
-    mongodb:
-      mongoose.connection.readyState === 1 ? 'connected' : 'disconnected',
-    uptime: process.uptime(),
-    timestamp: Date.now(),
+    status: 'OK',
+    database:
+      mongoose.connection.readyState === 1 ? 'Connected' : 'Disconnected',
+    timestamp: new Date().toISOString(),
   })
 })
 
@@ -163,5 +162,5 @@ app.listen(port, () => {
   console.log('- POST /api/mpesa/confirm')
   console.log('\nTest endpoints:')
   console.log(`- GET http://localhost:${port}/test`)
-  console.log(`- GET http://localhost:${port}/health`)
+  console.log(`- GET http://localhost:${port}/api/health`)
 })
