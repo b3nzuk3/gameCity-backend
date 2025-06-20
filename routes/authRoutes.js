@@ -116,7 +116,12 @@ router.post('/login', async (req, res) => {
     )
     res.json({
       token,
-      user: { name: user.name, email: user.email, isAdmin: user.isAdmin },
+      user: {
+        id: user._id,
+        name: user.name,
+        email: user.email,
+        isAdmin: user.isAdmin,
+      },
     })
   } catch (error) {
     console.error('Login error:', error)
@@ -129,7 +134,14 @@ router.get('/me', protect, async (req, res) => {
   if (!req.user) {
     return res.status(401).json({ error: 'Not authenticated' })
   }
-  res.json({ user: req.user })
+  res.json({
+    user: {
+      id: req.user._id,
+      name: req.user.name,
+      email: req.user.email,
+      isAdmin: req.user.isAdmin,
+    },
+  })
 })
 
 // Password reset request

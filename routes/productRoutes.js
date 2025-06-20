@@ -12,6 +12,7 @@ const {
   updateProduct,
   deleteProduct,
   createProductReview,
+  hasUserPurchasedProduct,
 } = require('../controllers/productController')
 const { protect, admin } = require('../middleware/authMiddleware')
 
@@ -293,5 +294,9 @@ router.delete('/:id', protect, admin, async (req, res) => {
     res.status(500).json({ success: false, error: 'Failed to delete product' })
   }
 })
+
+router.route('/').get(getProducts).post(protect, admin, createProduct)
+router.route('/:id/reviews').post(protect, createProductReview)
+router.route('/:id/has-purchased').get(protect, hasUserPurchasedProduct)
 
 module.exports = router

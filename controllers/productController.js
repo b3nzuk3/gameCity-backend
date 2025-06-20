@@ -1,4 +1,5 @@
 const Product = require('../models/productModel')
+const Order = require('../models/orderModel')
 
 // @desc    Fetch all products
 // @route   GET /api/products
@@ -66,14 +67,23 @@ const getProductById = async (req, res) => {
 // @access  Private/Admin
 const createProduct = async (req, res) => {
   try {
-    const { name, price, description, image, brand, category, countInStock } =
-      req.body
+    const {
+      name,
+      price,
+      description,
+      image,
+      images,
+      brand,
+      category,
+      countInStock,
+    } = req.body
 
     const product = new Product({
       name,
       price,
       description,
       image,
+      images,
       brand,
       category,
       countInStock,
@@ -94,8 +104,16 @@ const createProduct = async (req, res) => {
 // @access  Private/Admin
 const updateProduct = async (req, res) => {
   try {
-    const { name, price, description, image, brand, category, countInStock } =
-      req.body
+    const {
+      name,
+      price,
+      description,
+      image,
+      images,
+      brand,
+      category,
+      countInStock,
+    } = req.body
 
     const product = await Product.findById(req.params.id)
 
@@ -104,9 +122,10 @@ const updateProduct = async (req, res) => {
       product.price = price || product.price
       product.description = description || product.description
       product.image = image || product.image
+      product.images = images || product.images
       product.brand = brand || product.brand
       product.category = category || product.category
-      product.countInStock = countInStock || product.countInStock
+      product.countInStock = countInStock ?? product.countInStock
 
       const updatedProduct = await product.save()
 
@@ -154,8 +173,20 @@ const createProductReview = async (req, res) => {
       )
 
       if (alreadyReviewed) {
-        res.status(400)
-        throw new Error('Product already reviewed')
+        return res.status(400).json({ message: 'Product already reviewed' })
+      }
+
+      // Check if the user has purchased the product
+      const orders = await Order.find({
+        user: req.user._id,
+        'orderItems.product': product._id,
+        status: 'completed',
+      })
+
+      if (orders.length === 0) {
+        return res
+          .status(403)
+          .json({ message: 'You must purchase this product to review it' })
       }
 
       const review = {
@@ -177,11 +208,32 @@ const createProductReview = async (req, res) => {
 
       res.status(201).json({ message: 'Review added' })
     } else {
-      res.status(404)
-      throw new Error('Product not found')
+      res.status(404).json({ message: 'Product not found' })
     }
   } catch (error) {
+    console.error('Create review error:', error)
     res.status(400).json({ message: error.message })
+  }
+}
+
+// @desc    Check if user has purchased a product
+// @route   GET /api/products/:id/has-purchased
+// @access  Private
+const hasUserPurchasedProduct = async (req, res) => {
+  try {
+    const orders = await Order.find({
+      user: req.user._id,
+      'orderItems.product': req.params.id,
+      status: 'completed',
+    })
+
+    if (orders.length > 0) {
+      res.json({ hasPurchased: true })
+    } else {
+      res.json({ hasPurchased: false })
+    }
+  } catch (error) {
+    res.status(500).json({ message: 'Server error' })
   }
 }
 
@@ -192,4 +244,5 @@ module.exports = {
   updateProduct,
   deleteProduct,
   createProductReview,
+  hasUserPurchasedProduct,
 }

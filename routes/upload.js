@@ -19,7 +19,7 @@ const upload = multer({
     }
     cb(null, true)
   },
-}).single('image')
+}).array('images', 10) // Accept up to 10 images
 
 // Helper function to upload buffer to Cloudinary
 const uploadToCloudinary = (buffer) => {
@@ -57,16 +57,17 @@ router.post('/', (req, res) => {
       return res.status(400).json({ error: err.message })
     }
 
-    if (!req.file) {
-      return res.status(400).json({ error: 'No file uploaded' })
+    if (!req.files || req.files.length === 0) {
+      return res.status(400).json({ error: 'No files uploaded' })
     }
 
     try {
-      const result = await uploadToCloudinary(req.file.buffer)
-      res.json({
-        url: result.secure_url,
-        public_id: result.public_id,
-      })
+      const uploadPromises = req.files.map((file) =>
+        uploadToCloudinary(file.buffer)
+      )
+      const results = await Promise.all(uploadPromises)
+      const urls = results.map((result) => result.secure_url)
+      res.json({ urls })
     } catch (error) {
       console.error('Cloudinary upload error:', error)
       res.status(500).json({ error: 'Failed to upload to cloud storage' })
