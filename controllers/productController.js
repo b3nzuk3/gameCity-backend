@@ -1,5 +1,6 @@
 const Product = require('../models/productModel')
 const Order = require('../models/orderModel')
+const { clearCache } = require('../middleware/cacheMiddleware')
 
 // @desc    Fetch all products
 // @route   GET /api/products
@@ -76,6 +77,7 @@ const createProduct = async (req, res) => {
       brand,
       category,
       countInStock,
+      specifications,
     } = req.body
 
     const product = new Product({
@@ -87,12 +89,13 @@ const createProduct = async (req, res) => {
       brand,
       category,
       countInStock,
+      specifications,
       user: req.user._id,
       numReviews: 0,
     })
 
     const createdProduct = await product.save()
-
+    await clearCache()
     res.status(201).json(createdProduct)
   } catch (error) {
     res.status(400).json({ message: 'Invalid product data' })
@@ -113,6 +116,7 @@ const updateProduct = async (req, res) => {
       brand,
       category,
       countInStock,
+      specifications,
     } = req.body
 
     const product = await Product.findById(req.params.id)
@@ -126,6 +130,7 @@ const updateProduct = async (req, res) => {
       product.brand = brand || product.brand
       product.category = category || product.category
       product.countInStock = countInStock ?? product.countInStock
+      product.specifications = specifications || product.specifications
 
       const updatedProduct = await product.save()
 
@@ -144,16 +149,18 @@ const updateProduct = async (req, res) => {
 // @access  Private/Admin
 const deleteProduct = async (req, res) => {
   try {
-    const product = await Product.findById(req.params.id)
-
+    console.log('DELETE /api/products/:id called with id:', req.params.id)
+    const product = await Product.findByIdAndDelete(req.params.id)
+    console.log('Product deleted:', product)
     if (product) {
-      await product.remove()
+      await clearCache()
       res.json({ message: 'Product removed' })
     } else {
       res.status(404)
       throw new Error('Product not found')
     }
   } catch (error) {
+    console.error('Delete error:', error)
     res.status(404).json({ message: 'Product not found' })
   }
 }
