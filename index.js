@@ -14,8 +14,10 @@ const mpesaRoutes = require('./routes/mpesa')
 const authRoutes = require('./routes/authRoutes')
 const uploadRoutes = require('./routes/upload')
 
-// Load environment variables from .env file
-dotenv.config({ path: path.join(__dirname, '.env') })
+// Load environment variables based on NODE_ENV
+const envFile =
+  process.env.NODE_ENV === 'development' ? '.env.development' : '.env'
+dotenv.config({ path: path.join(__dirname, envFile) })
 console.log(
   'Loaded .env:',
   process.env.CLOUDINARY_CLOUD_NAME,

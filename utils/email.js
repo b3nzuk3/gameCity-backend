@@ -9,11 +9,11 @@ const transporter = nodemailer.createTransport({
 })
 
 async function sendVerificationEmail(to, token, name, req) {
-  const verifyUrl = `${req.protocol}://${req.get(
-    'host'
-  )}/api/auth/verify-email?token=${token}`
+  // Use frontend URL for verification link
+  const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173'
+  const verifyUrl = `${frontendUrl}/verify-email?token=${token}`
   await transporter.sendMail({
-    from: 'no-reply@gamecity.com',
+    from: 'gamecityelectronicsonline@gmail.com',
     to,
     subject: 'Verify your email',
     html: `<p>Hi ${name},</p><p>Please verify your email by clicking <a href="${verifyUrl}">here</a>.</p>`,

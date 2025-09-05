@@ -16,11 +16,11 @@ async function sendVerificationEmail(user, req) {
       pass: process.env.EMAIL_PASS,
     },
   })
-  const verifyUrl = `${req.protocol}://${req.get(
-    'host'
-  )}/api/auth/verify-email?token=${user.verificationToken}`
+  // Use frontend URL for verification link
+  const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173'
+  const verifyUrl = `${frontendUrl}/verify-email?token=${user.verificationToken}`
   await transporter.sendMail({
-    from: 'no-reply@gamecity.com',
+    from: 'gamecityelectronicsonline@gmail.com',
     to: user.email,
     subject: 'Verify your email',
     html: `<p>Hi ${user.name},</p><p>Please verify your email by clicking <a href="${verifyUrl}">here</a>.</p>`,
@@ -81,7 +81,7 @@ router.get('/verify-email', async (req, res) => {
     user.isVerified = true
     user.verificationToken = undefined
     await user.save()
-    res.send('<h2>Email verified! You can now log in.</h2>')
+    res.json({ message: 'Email verified successfully! You can now log in.' })
   } catch (error) {
     console.error('Email verification error:', error)
     res.status(500).json({ message: 'Server error' })
@@ -174,7 +174,7 @@ router.post('/reset-password', async (req, res) => {
     },
   })
   await transporter.sendMail({
-    from: 'no-reply@gamecity.com',
+    from: 'gamecityelectronicsonline@gmail.com',
     to: user.email,
     subject: 'Password Reset',
     html: `<p>Hi ${user.name},</p><p>Click <a href="${resetUrl}">here</a> to reset your password. This link will expire in 1 hour.</p>`,
