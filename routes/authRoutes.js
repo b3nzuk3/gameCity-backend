@@ -3,29 +3,14 @@ const router = express.Router()
 const bcrypt = require('bcryptjs')
 const jwt = require('jsonwebtoken')
 const crypto = require('crypto')
-const nodemailer = require('nodemailer')
 const User = require('../models/userModel')
 const { protect } = require('../middleware/authMiddleware')
+const {
+  sendVerificationEmail,
+  sendPasswordResetEmail,
+} = require('../services/emailService')
 
-// Helper: send verification email
-async function sendVerificationEmail(user, req) {
-  const transporter = nodemailer.createTransport({
-    service: 'gmail',
-    auth: {
-      user: process.env.EMAIL_USER,
-      pass: process.env.EMAIL_PASS,
-    },
-  })
-  // Use frontend URL for verification link
-  const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173'
-  const verifyUrl = `${frontendUrl}/verify-email?token=${user.verificationToken}`
-  await transporter.sendMail({
-    from: 'gamecityelectronicsonline@gmail.com',
-    to: user.email,
-    subject: 'Verify your email',
-    html: `<p>Hi ${user.name},</p><p>Please verify your email by clicking <a href="${verifyUrl}">here</a>.</p>`,
-  })
-}
+// Note: sendVerificationEmail is now imported from emailService
 
 // Registration route
 router.post('/register', async (req, res) => {
@@ -148,38 +133,34 @@ router.get('/me', protect, async (req, res) => {
 
 // Password reset request
 router.post('/reset-password', async (req, res) => {
-  const { email } = req.body
-  if (!email) {
-    return res.status(400).json({ message: 'Email is required' })
-  }
-  const user = await User.findOne({ email })
-  if (!user) {
-    return res.status(404).json({ message: 'No user found with that email' })
-  }
-  // Generate reset token
-  const resetToken = crypto.randomBytes(32).toString('hex')
-  user.resetPasswordToken = resetToken
-  user.resetPasswordExpires = Date.now() + 3600000 // 1 hour
-  await user.save()
+  try {
+    const { email } = req.body
+    if (!email) {
+      return res.status(400).json({ message: 'Email is required' })
+    }
 
-  // Use frontend URL for reset link
-  const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173'
-  const resetUrl = `${frontendUrl}/reset-password/${resetToken}`
+    const user = await User.findOne({ email })
+    if (!user) {
+      return res.status(404).json({ message: 'No user found with that email' })
+    }
 
-  const transporter = nodemailer.createTransport({
-    service: 'gmail',
-    auth: {
-      user: process.env.EMAIL_USER,
-      pass: process.env.EMAIL_PASS,
-    },
-  })
-  await transporter.sendMail({
-    from: 'gamecityelectronicsonline@gmail.com',
-    to: user.email,
-    subject: 'Password Reset',
-    html: `<p>Hi ${user.name},</p><p>Click <a href="${resetUrl}">here</a> to reset your password. This link will expire in 1 hour.</p>`,
-  })
-  res.json({ message: 'Password reset instructions sent to your email.' })
+    // Generate reset token
+    const resetToken = crypto.randomBytes(32).toString('hex')
+    user.resetPasswordToken = resetToken
+    user.resetPasswordExpires = Date.now() + 3600000 // 1 hour
+    await user.save()
+
+    // Send password reset email using the email service
+    await sendPasswordResetEmail(user, resetToken, req)
+    res.json({ message: 'Password reset instructions sent to your email.' })
+  } catch (error) {
+    console.error('Password reset error:', error)
+    res
+      .status(500)
+      .json({
+        message: 'Failed to send password reset email. Please try again.',
+      })
+  }
 })
 
 // Password reset (set new password)
