@@ -78,6 +78,7 @@ const createProduct = async (req, res) => {
       category,
       countInStock,
       specifications,
+      offer,
     } = req.body
 
     const product = new Product({
@@ -90,6 +91,7 @@ const createProduct = async (req, res) => {
       category,
       countInStock,
       specifications,
+      offer,
       user: req.user._id,
       numReviews: 0,
     })
@@ -117,6 +119,7 @@ const updateProduct = async (req, res) => {
       category,
       countInStock,
       specifications,
+      offer,
     } = req.body
 
     const product = await Product.findById(req.params.id)
@@ -131,8 +134,30 @@ const updateProduct = async (req, res) => {
       product.category = category || product.category
       product.countInStock = countInStock ?? product.countInStock
       product.specifications = specifications || product.specifications
+      if (offer !== undefined) {
+        // Basic validation: ensure amount is non-negative and type is valid
+        const nextOffer = offer || {}
+        if (nextOffer.amount !== undefined && Number(nextOffer.amount) < 0) {
+          return res.status(400).json({ message: 'Offer amount must be >= 0' })
+        }
+        if (
+          nextOffer.type &&
+          !['percentage', 'fixed'].includes(String(nextOffer.type))
+        ) {
+          return res
+            .status(400)
+            .json({ message: 'Offer type must be percentage or fixed' })
+        }
+        product.offer = {
+          ...product.offer?.toObject?.(),
+          ...nextOffer,
+        }
+      }
 
       const updatedProduct = await product.save()
+
+      // Invalidate cached product listings so changes reflect in grids/cards
+      await clearCache()
 
       res.json(updatedProduct)
     } else {

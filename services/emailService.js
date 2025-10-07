@@ -174,7 +174,8 @@ async function sendEmailWithRetry(mailOptions, maxRetries = 3) {
 // Public email functions
 async function sendVerificationEmail(user, req) {
   try {
-    const frontendUrl = process.env.FRONTEND_URL || 'https://game-city-one.vercel.app'
+    const frontendUrl =
+      process.env.FRONTEND_URL || 'https://game-city-one.vercel.app'
     console.log('Frontend URL for verification:', frontendUrl)
     const verifyUrl = `${frontendUrl}/verify-email?token=${user.verificationToken}`
 
@@ -200,7 +201,8 @@ async function sendVerificationEmail(user, req) {
 
 async function sendPasswordResetEmail(user, resetToken, req) {
   try {
-    const frontendUrl = process.env.FRONTEND_URL || 'https://game-city-one.vercel.app'
+    const frontendUrl =
+      process.env.FRONTEND_URL || 'https://game-city-one.vercel.app'
     console.log('Frontend URL for password reset:', frontendUrl)
     const resetUrl = `${frontendUrl}/reset-password/${resetToken}`
 

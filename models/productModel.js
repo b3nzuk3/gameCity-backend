@@ -30,6 +30,17 @@ const productSchema = new mongoose.Schema(
     numReviews: { type: Number, required: true, default: 0 },
     reviews: [reviewSchema],
     specifications: { type: mongoose.Schema.Types.Mixed, default: {} },
+    offer: {
+      enabled: { type: Boolean, default: false },
+      type: {
+        type: String,
+        enum: ['percentage', 'fixed'],
+        default: 'percentage',
+      },
+      amount: { type: Number, default: 0 },
+      startDate: { type: Date },
+      endDate: { type: Date },
+    },
   },
   {
     timestamps: true,
