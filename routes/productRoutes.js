@@ -153,11 +153,29 @@ router.get('/category/:category', cacheMiddleware(300), async (req, res) => {
     const limit = parseInt(req.query.limit) || 10
     const sort = req.query.sort || '-createdAt'
 
-    const query = category === 'all' ? {} : { category }
+    // Map URL slugs to database category names
+    const categoryMapping = {
+      'pre-built': 'PRE-BUILT',
+      monitors: 'Monitors',
+      'graphics-cards': 'Graphics Cards',
+      memory: 'Memory',
+      processors: 'Processors',
+      storage: 'Storage',
+      motherboards: 'Motherboards',
+      cases: 'Cases',
+      'power-supply': 'Power Supply',
+      'cpu-cooling': 'CPU Cooling',
+      oem: 'OEM',
+      accessories: 'Accessories',
+      all: 'all',
+    }
+
+    const dbCategory = categoryMapping[category] || category
+    const query = category === 'all' ? {} : { category: dbCategory }
     const skip = (page - 1) * limit
 
     console.log(
-      `CategoryRoute: category=${category}, page=${page}, limit=${limit}`
+      `CategoryRoute: category=${category}, dbCategory=${dbCategory}, page=${page}, limit=${limit}`
     )
 
     const [products, total] = await Promise.all([
