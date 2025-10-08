@@ -14,6 +14,7 @@ const {
   createProductReview,
   hasUserPurchasedProduct,
   getUniqueBrands,
+  clearProductCache,
 } = require('../controllers/productController')
 const { protect, admin } = require('../middleware/authMiddleware')
 
@@ -75,10 +76,12 @@ function uploadToCloudinary(buffer, folder = 'products') {
 router.get('/', cacheMiddleware(300), async (req, res) => {
   try {
     const page = parseInt(req.query.page) || 1
-    const limit = parseInt(req.query.limit) || 10
+    const limit = parseInt(req.query.limit) || 50
     const category = req.query.category
     const sort = req.query.sort || '-createdAt'
     const search = req.query.search
+
+    console.log(`ProductRoutes: limit=${limit}, page=${page}`)
 
     const query = {}
 
@@ -153,12 +156,20 @@ router.get('/category/:category', cacheMiddleware(300), async (req, res) => {
     const query = category === 'all' ? {} : { category }
     const skip = (page - 1) * limit
 
+    console.log(
+      `CategoryRoute: category=${category}, page=${page}, limit=${limit}`
+    )
+
     const [products, total] = await Promise.all([
       Product.find(query).sort(sort).skip(skip).limit(limit).lean(),
       Product.countDocuments(query),
     ])
 
     const totalPages = Math.ceil(total / limit)
+
+    console.log(
+      `CategoryRoute: Found ${products.length} products, total: ${total}`
+    )
 
     res.json({
       products: products.map((p) => ({ ...p, id: p._id.toString() })),
@@ -182,6 +193,7 @@ router.route('/:id/has-purchased').get(protect, hasUserPurchasedProduct)
 
 // Admin routes
 router.route('/').post(protect, admin, createProduct)
+router.route('/clear-cache').post(protect, admin, clearProductCache)
 router
   .route('/:id')
   .put(protect, admin, updateProduct)

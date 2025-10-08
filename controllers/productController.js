@@ -7,8 +7,9 @@ const { clearCache } = require('../middleware/cacheMiddleware')
 // @access  Public
 const getProducts = async (req, res) => {
   try {
-    const pageSize = 10
+    const pageSize = 50
     const page = Number(req.query.pageNumber) || 1
+    console.log(`getProducts: pageSize=${pageSize}, page=${page}`)
 
     const keyword = req.query.keyword
       ? {
@@ -33,6 +34,10 @@ const getProducts = async (req, res) => {
     const products = await Product.find({ ...keyword, ...category })
       .limit(pageSize)
       .skip(pageSize * (page - 1))
+
+    console.log(
+      `getProducts: Found ${products.length} products, total count: ${count}`
+    )
 
     res.json({
       products,
@@ -157,7 +162,7 @@ const updateProduct = async (req, res) => {
       const updatedProduct = await product.save()
 
       // Invalidate cached product listings so changes reflect in grids/cards
-      await clearCache()
+      await clearCache('cache:/api/products')
 
       res.json(updatedProduct)
     } else {
@@ -297,6 +302,21 @@ const getUniqueBrands = async (req, res) => {
   }
 }
 
+// @desc    Clear product cache
+// @route   POST /api/products/clear-cache
+// @access  Private/Admin
+const clearProductCache = async (req, res) => {
+  try {
+    // Clear all product-related cache
+    await clearCache('cache:/api/products')
+    await clearCache('cache:/api/products/category')
+    res.json({ message: 'Product cache cleared successfully' })
+  } catch (error) {
+    console.error('Error clearing cache:', error)
+    res.status(500).json({ message: 'Failed to clear cache' })
+  }
+}
+
 module.exports = {
   getProducts,
   getProductById,
@@ -306,4 +326,5 @@ module.exports = {
   createProductReview,
   hasUserPurchasedProduct,
   getUniqueBrands,
+  clearProductCache,
 }
