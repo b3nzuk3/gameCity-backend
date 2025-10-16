@@ -205,6 +205,45 @@ router.get('/category/:category', cacheMiddleware(300), async (req, res) => {
   }
 })
 
+// Get product by slug (SEO-friendly URL)
+router.get('/slug/:slug', async (req, res) => {
+  try {
+    const { slug } = req.params
+
+    // Remove the '-nairobi' suffix if present
+    const cleanSlug = slug.replace(/-nairobi$/, '')
+
+    // Find product by matching the slug with product name
+    const products = await Product.find({})
+
+    const product = products.find((p) => {
+      const productSlug = p.name
+        .toLowerCase()
+        .trim()
+        .replace(/[^\w\s-]/g, '')
+        .replace(/[\s_-]+/g, '-')
+        .replace(/^-+|-+$/g, '')
+
+      return productSlug === cleanSlug
+    })
+
+    if (!product) {
+      return res.status(404).json({
+        success: false,
+        error: 'Product not found',
+      })
+    }
+
+    res.json(product)
+  } catch (error) {
+    console.error('Error fetching product by slug:', error)
+    res.status(500).json({
+      success: false,
+      error: 'Failed to fetch product',
+    })
+  }
+})
+
 // Protected routes for reviews
 router.route('/:id/reviews').post(protect, createProductReview)
 router.route('/:id/has-purchased').get(protect, hasUserPurchasedProduct)
