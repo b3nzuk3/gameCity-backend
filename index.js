@@ -40,7 +40,21 @@ const app = express()
 const port = process.env.PORT || 5001
 
 // Security middleware
-app.use(helmet())
+app.use(
+  helmet({
+    frameguard: { action: 'deny' }, // Sets X-Frame-Options: DENY
+    noSniff: true, // Sets X-Content-Type-Options: nosniff
+    xssFilter: true, // Sets X-XSS-Protection: 1; mode=block
+    contentSecurityPolicy: {
+      directives: {
+        defaultSrc: ["'self'"],
+        styleSrc: ["'self'", "'unsafe-inline'"],
+        scriptSrc: ["'self'"],
+        imgSrc: ["'self'", 'data:', 'https:'],
+      },
+    },
+  })
+)
 
 // Compression middleware
 app.use(compression())
