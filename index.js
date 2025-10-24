@@ -13,6 +13,7 @@ const cartRoutes = require('./routes/cartRoutes')
 const mpesaRoutes = require('./routes/mpesa')
 const authRoutes = require('./routes/authRoutes')
 const uploadRoutes = require('./routes/upload')
+const sitemapRoutes = require('./routes/sitemapRoutes')
 
 // Load environment variables from .env file
 dotenv.config({ path: path.join(__dirname, '.env') })
@@ -121,6 +122,9 @@ app.use('/api/users', userRoutes)
 app.use('/api/orders', orderRoutes)
 app.use('/api/cart', cartRoutes)
 app.use('/api/upload', uploadRoutes)
+
+// Sitemap route (serves XML directly)
+app.use('/', sitemapRoutes)
 
 // Health check endpoint
 app.get('/api/health', (req, res) => {
