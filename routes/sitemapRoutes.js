@@ -11,7 +11,7 @@ router.get('/sitemap.xml', async (req, res) => {
     // Fetch all products
     const products = await Product.find({}).lean()
 
-    const baseUrl = 'https://www.gamecityelectronics.com'
+    const baseUrl = 'https://www.gamecityelectronics.co.ke'
     const currentDate = new Date().toISOString()
 
     let xml = `<?xml version="1.0" encoding="UTF-8"?>

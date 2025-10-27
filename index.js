@@ -64,6 +64,8 @@ app.use(
   cors({
     origin: [
       'https://www.gamecityelectronics.com',
+      'https://www.gamecityelectronics.co.ke',
+      'https://gamecityelectronics.co.ke',
       'https://game-city-one.vercel.app',
       'http://localhost:5173',
       'http://localhost:3000',
