@@ -105,7 +105,8 @@ const createProduct = async (req, res) => {
     await clearCache()
     res.status(201).json(createdProduct)
   } catch (error) {
-    res.status(400).json({ message: 'Invalid product data' })
+    console.error('Create product error:', error)
+    res.status(400).json({ message: error.message || 'Invalid product data' })
   }
 }
 
