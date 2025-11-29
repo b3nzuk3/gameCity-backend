@@ -39,4 +39,29 @@ const admin = (req, res, next) => {
   }
 };
 
-module.exports = { protect, admin };
+// Optional auth middleware - sets req.user if token is present, but doesn't require it
+const optionalAuth = async (req, res, next) => {
+  let token;
+  
+  if (
+    req.headers.authorization &&
+    req.headers.authorization.startsWith('Bearer')
+  ) {
+    try {
+      token = req.headers.authorization.split(' ')[1];
+      
+      const decoded = jwt.verify(token, process.env.JWT_SECRET);
+      
+      req.user = await User.findById(decoded.id).select('-password');
+    } catch (error) {
+      console.error('Optional auth error:', error);
+      // Don't fail if token is invalid, just continue without user
+      req.user = null;
+    }
+  }
+  
+  // Always continue, even if no token or invalid token
+  next();
+};
+
+module.exports = { protect, admin, optionalAuth };

@@ -16,8 +16,27 @@ const orderSchema = new mongoose.Schema(
   {
     user: {
       type: mongoose.Schema.Types.ObjectId,
-      required: true,
+      required: false,
       ref: 'User',
+    },
+    // Guest information for non-authenticated users
+    guestName: {
+      type: String,
+      required: function() {
+        return !this.user
+      },
+    },
+    guestEmail: {
+      type: String,
+      required: function() {
+        return !this.user
+      },
+    },
+    guestPhone: {
+      type: String,
+      required: function() {
+        return !this.user
+      },
     },
     orderItems: [orderItemSchema],
     paymentMethod: { type: String, required: true },

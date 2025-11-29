@@ -9,9 +9,9 @@ const {
   getMyOrders,
   getOrders,
 } = require('../controllers/orderController')
-const { protect, admin } = require('../middleware/authMiddleware')
+const { protect, admin, optionalAuth } = require('../middleware/authMiddleware')
 
-router.route('/').post(protect, createOrder).get(protect, admin, getOrders)
+router.route('/').post(optionalAuth, createOrder).get(protect, admin, getOrders)
 
 router.route('/myorders').get(protect, getMyOrders)
 

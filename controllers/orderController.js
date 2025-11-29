@@ -4,28 +4,50 @@ const mongoose = require('mongoose')
 
 // @desc    Create new order
 // @route   POST /api/orders
-// @access  Private
+// @access  Public (supports both authenticated and guest users)
 const createOrder = async (req, res) => {
   try {
     console.log('Incoming order payload:', req.body)
-    const { orderItems, paymentMethod, itemsPrice, totalPrice } = req.body
+    const { orderItems, paymentMethod, itemsPrice, totalPrice, guestName, guestEmail, guestPhone } = req.body
 
     if (orderItems && orderItems.length === 0) {
       res.status(400)
       throw new Error('No order items')
     }
 
-    const order = new Order({
-      orderItems,
-      user: req.user._id,
-      paymentMethod,
-      itemsPrice,
-      totalPrice,
-    })
+    // If user is authenticated, use their ID. Otherwise, require guest info
+    if (req.user) {
+      // Authenticated user order
+      const order = new Order({
+        orderItems,
+        user: req.user._id,
+        paymentMethod,
+        itemsPrice,
+        totalPrice,
+      })
 
-    const createdOrder = await order.save()
+      const createdOrder = await order.save()
+      res.status(201).json(createdOrder)
+    } else {
+      // Guest order - validate guest information
+      if (!guestName || !guestEmail || !guestPhone) {
+        res.status(400)
+        throw new Error('Guest information (name, email, phone) is required for guest checkout')
+      }
 
-    res.status(201).json(createdOrder)
+      const order = new Order({
+        orderItems,
+        guestName,
+        guestEmail,
+        guestPhone,
+        paymentMethod,
+        itemsPrice,
+        totalPrice,
+      })
+
+      const createdOrder = await order.save()
+      res.status(201).json(createdOrder)
+    }
   } catch (error) {
     res.status(400).json({ message: error.message })
   }
