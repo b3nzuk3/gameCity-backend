@@ -26,6 +26,11 @@ const productSchema = new mongoose.Schema(
     category: { type: String, required: true },
     price: { type: Number, required: true, default: 0 },
     countInStock: { type: Number, required: true, default: 0 },
+    condition: {
+      type: String,
+      enum: ['New', 'Pre-Owned'],
+      default: 'New',
+    },
     rating: { type: Number, required: true, default: 0 },
     numReviews: { type: Number, required: true, default: 0 },
     reviews: [reviewSchema],

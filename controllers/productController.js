@@ -82,6 +82,7 @@ const createProduct = async (req, res) => {
       brand,
       category,
       countInStock,
+      condition,
       specifications,
       offer,
     } = req.body
@@ -95,6 +96,7 @@ const createProduct = async (req, res) => {
       brand,
       category,
       countInStock,
+      condition,
       specifications,
       offer,
       user: req.user._id,
@@ -124,6 +126,7 @@ const updateProduct = async (req, res) => {
       brand,
       category,
       countInStock,
+      condition,
       specifications,
       offer,
     } = req.body
@@ -139,6 +142,9 @@ const updateProduct = async (req, res) => {
       product.brand = brand || product.brand
       product.category = category || product.category
       product.countInStock = countInStock ?? product.countInStock
+      if (condition !== undefined) {
+        product.condition = condition || 'New'
+      }
       product.specifications = specifications || product.specifications
       if (offer !== undefined) {
         // Basic validation: ensure amount is non-negative and type is valid
