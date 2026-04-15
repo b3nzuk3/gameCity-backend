@@ -6,6 +6,7 @@ const path = require('path')
 const helmet = require('helmet')
 const compression = require('compression')
 const rateLimit = require('express-rate-limit')
+const crypto = require('crypto')
 const userRoutes = require('./routes/userRoutes')
 const productRoutes = require('./routes/productRoutes')
 const orderRoutes = require('./routes/orderRoutes')
@@ -14,6 +15,7 @@ const mpesaRoutes = require('./routes/mpesa')
 const authRoutes = require('./routes/authRoutes')
 const uploadRoutes = require('./routes/upload')
 const sitemapRoutes = require('./routes/sitemapRoutes')
+const { csrfMiddleware, generateCsrfToken } = require('./middleware/csrfMiddleware')
 
 // Load environment variables from .env file
 dotenv.config({ path: path.join(__dirname, '.env') })
@@ -151,6 +153,16 @@ app.get('/api/health', (req, res) => {
     database:
       mongoose.connection.readyState === 1 ? 'Connected' : 'Disconnected',
     timestamp: new Date().toISOString(),
+  })
+})
+
+// CSRF token endpoint
+app.get('/api/csrf-token', (req, res) => {
+  const sessionId = crypto.randomBytes(16).toString('hex')
+  const token = generateCsrfToken(sessionId)
+  res.json({
+    csrfToken: token,
+    sessionId: sessionId,
   })
 })
 
