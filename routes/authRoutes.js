@@ -27,27 +27,33 @@ router.post('/register', async (req, res) => {
         .status(400)
         .json({ message: 'User already exists with this email' })
     }
-    // Generate verification token
-    const verificationToken = crypto.randomBytes(32).toString('hex')
+    // Create user without email verification (temporarily disabled)
     const user = new User({
       name,
       email,
       password,
       isAdmin: false,
-      isVerified: false,
-      verificationToken,
+      isVerified: true, // Email verification disabled
     })
     await user.save()
-    await sendVerificationEmail(user, req)
+    
+    // Generate JWT token
+    const token = jwt.sign(
+      { id: user._id, email: user.email, isAdmin: user.isAdmin },
+      process.env.JWT_SECRET || 'your-secret-key',
+      { expiresIn: '24h' }
+    )
+    
     res.status(201).json({
       user: {
+        id: user._id,
         name: user.name,
         email: user.email,
         isAdmin: user.isAdmin,
         isVerified: user.isVerified,
       },
-      message:
-        'Registration successful. Please check your email to verify your account.',
+      token,
+      message: 'Registration successful!',
     })
   } catch (error) {
     console.error('Registration error:', error)
@@ -89,11 +95,6 @@ router.post('/login', async (req, res) => {
     const isMatch = await user.matchPassword(password)
     if (!isMatch) {
       return res.status(401).json({ message: 'Invalid credentials' })
-    }
-    if (!user.isVerified) {
-      return res
-        .status(403)
-        .json({ message: 'Please verify your email before logging in.' })
     }
     // Generate JWT token
     const token = jwt.sign(
