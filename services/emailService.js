@@ -4,6 +4,11 @@ const nodemailer = require('nodemailer')
 console.log('Environment check:')
 console.log('FRONTEND_URL:', process.env.FRONTEND_URL)
 console.log('EMAIL_USER:', process.env.EMAIL_USER ? 'Set' : 'Not set')
+console.log('EMAIL_PASS:', process.env.EMAIL_PASS ? 'Set' : 'Not set')
+
+if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
+  console.error('ERROR: Email credentials are not configured!')
+}
 
 // Create a reusable transporter with connection pooling
 const transporter = nodemailer.createTransport({
@@ -156,6 +161,15 @@ async function sendEmailWithRetry(mailOptions, maxRetries = 3) {
       return result
     } catch (error) {
       console.error(`Email send attempt ${attempt} failed:`, error.message)
+      console.error('Error code:', error.code)
+      
+      // Check for specific Gmail authentication errors
+      if (error.code === 'EAUTH') {
+        console.error('Gmail authentication failed!')
+        console.error('- Make sure you are using an App Password, not your regular Gmail password')
+        console.error('- Go to https://myaccount.google.com/apppasswords to generate one')
+        console.error('- Enable 2-Factor Authentication on your Google account first')
+      }
 
       if (attempt === maxRetries) {
         throw new Error(
@@ -204,6 +218,11 @@ async function sendPasswordResetEmail(user, resetToken, req) {
     const frontendUrl =
       process.env.FRONTEND_URL || 'https://www.gamecityelectronics.co.ke'
     console.log('Frontend URL for password reset:', frontendUrl)
+    
+    // Debug: Check if email credentials are available
+    console.log('Sending password reset to:', user.email)
+    console.log('Email user configured:', !!process.env.EMAIL_USER)
+    
     const resetUrl = `${frontendUrl}/reset-password/${resetToken}`
 
     const template = emailTemplates.passwordReset(user.name, resetUrl)
@@ -222,6 +241,8 @@ async function sendPasswordResetEmail(user, resetToken, req) {
     return await sendEmailWithRetry(mailOptions)
   } catch (error) {
     console.error('Failed to send password reset email:', error)
+    console.error('Error code:', error.code)
+    console.error('Error message:', error.message)
     throw error
   }
 }
