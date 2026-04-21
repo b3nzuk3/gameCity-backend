@@ -41,6 +41,9 @@ console.log('Loaded environment variables:', {
 const app = express()
 const port = process.env.PORT || 5001
 
+// Trust proxy for rate limiting behind load balancers
+app.set('trust proxy', 1)
+
 // Security middleware
 app.use(
   helmet({
