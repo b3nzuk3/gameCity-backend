@@ -1,30 +1,42 @@
-const express = require('express')
-const mongoose = require('mongoose')
-const cors = require('cors')
-const dotenv = require('dotenv')
-const path = require('path')
-const helmet = require('helmet')
-const compression = require('compression')
-const rateLimit = require('express-rate-limit')
-const crypto = require('crypto')
-const userRoutes = require('./routes/userRoutes')
-const productRoutes = require('./routes/productRoutes')
-const orderRoutes = require('./routes/orderRoutes')
-const cartRoutes = require('./routes/cartRoutes')
-const mpesaRoutes = require('./routes/mpesa')
-const authRoutes = require('./routes/authRoutes')
-const uploadRoutes = require('./routes/upload')
-const sitemapRoutes = require('./routes/sitemapRoutes')
-const { csrfMiddleware, generateCsrfToken } = require('./middleware/csrfMiddleware')
+const Sentry = require('@sentry/node');
+const express = require('express');
+const mongoose = require('mongoose');
+const cors = require('cors');
+const dotenv = require('dotenv');
+const path = require('path');
+const helmet = require('helmet');
+const compression = require('compression');
+const rateLimit = require('express-rate-limit');
+const crypto = require('crypto');
+const userRoutes = require('./routes/userRoutes');
+const productRoutes = require('./routes/productRoutes');
+const orderRoutes = require('./routes/orderRoutes');
+const cartRoutes = require('./routes/cartRoutes');
+const mpesaRoutes = require('./routes/mpesa');
+const authRoutes = require('./routes/authRoutes');
+const uploadRoutes = require('./routes/upload');
+const sitemapRoutes = require('./routes/sitemapRoutes');
+const { csrfMiddleware, generateCsrfToken } = require('./middleware/csrfMiddleware');
+
+// Initialize Sentry first - before all other code
+Sentry.init({
+  dsn: 'https://afe29a92f62bea42769abe4a9207df9e@o4511329239367680.ingest.de.sentry.io/4511329282359376',
+  environment: process.env.NODE_ENV || 'development',
+  integrations: [
+    new Sentry.Integrations.Http({ tracing: true }),
+    new Sentry.Integrations.Express({ app: undefined }), // Will be set after app creation
+  ],
+  tracesSampleRate: 1.0,
+});
 
 // Load environment variables from .env file
-dotenv.config({ path: path.join(__dirname, '.env') })
+dotenv.config({ path: path.join(__dirname, '.env') });
 console.log(
   'Loaded .env:',
   process.env.CLOUDINARY_CLOUD_NAME,
   process.env.CLOUDINARY_API_KEY,
   process.env.CLOUDINARY_API_SECRET
-)
+);
 
 // Log loaded environment variables (excluding secrets)
 console.log('Loaded environment variables:', {
@@ -36,13 +48,19 @@ console.log('Loaded environment variables:', {
   hasConsumerKey: !!process.env.MPESA_CONSUMER_KEY,
   hasConsumerSecret: !!process.env.MPESA_CONSUMER_SECRET,
   hasPasskey: !!process.env.MPESA_PASSKEY,
-})
+});
 
-const app = express()
-const port = process.env.PORT || 5001
+const app = express();
+const port = process.env.PORT || 5001;
 
 // Trust proxy for rate limiting behind load balancers
-app.set('trust proxy', 1)
+app.set('trust proxy', 1);
+
+// Sentry request handler - must be before all other middleware
+app.use(Sentry.Handlers.requestHandler());
+
+// Sentry tracing handler - for performance monitoring
+app.use(Sentry.Handlers.tracingHandler());
 
 // Security middleware
 app.use(
@@ -60,10 +78,10 @@ app.use(
       },
     },
   })
-)
+);
 
 // Compression middleware
-app.use(compression())
+app.use(compression());
 
 // Middleware
 app.use(
@@ -82,7 +100,7 @@ app.use(
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
     exposedHeaders: ['Cross-Origin-Resource-Policy'],
   })
-)
+);
 
 // Rate limiting - Placed AFTER CORS to ensure headers are sent even for blocked requests
 const limiter = rateLimit({
@@ -91,11 +109,11 @@ const limiter = rateLimit({
   standardHeaders: true, // Return rate limit info in the `RateLimit-*` headers
   legacyHeaders: false, // Disable the `X-RateLimit-*` headers
   message: 'Too many requests from this IP, please try again later.',
-})
-app.use('/api/', limiter)
+});
+app.use('/api/', limiter);
 
-app.use(express.json({ limit: '10mb' }))
-app.use(express.urlencoded({ extended: true, limit: '10mb' }))
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
 // Connect to MongoDB (if URI is provided)
 if (process.env.MONGODB_URI) {
@@ -109,45 +127,45 @@ if (process.env.MONGODB_URI) {
     })
     .then(() => console.log('Connected to MongoDB'))
     .catch((err) => {
-      console.error('MongoDB connection error:', err)
-      console.log('Continuing without MongoDB connection...')
-    })
+      console.error('MongoDB connection error:', err);
+      console.log('Continuing without MongoDB connection...');
+    });
 }
 
 // Debug route to log all registered routes
 app.get('/debug/routes', (req, res) => {
-  const routes = []
+  const routes = [];
   app._router.stack.forEach((middleware) => {
     if (middleware.route) {
       routes.push({
         path: middleware.route.path,
         methods: Object.keys(middleware.route.methods),
-      })
+      });
     } else if (middleware.name === 'router') {
       middleware.handle.stack.forEach((handler) => {
         if (handler.route) {
           routes.push({
             path: handler.route.path,
             methods: Object.keys(handler.route.methods),
-          })
+          });
         }
-      })
+      });
     }
-  })
-  res.json(routes)
-})
+  });
+  res.json(routes);
+});
 
 // Routes that don't require MongoDB
-app.use('/api/auth', authRoutes)
-app.use('/api/mpesa', mpesaRoutes)
-app.use('/api/products', productRoutes) // Product routes now available without MongoDB
-app.use('/api/users', userRoutes)
-app.use('/api/orders', orderRoutes)
-app.use('/api/cart', cartRoutes)
-app.use('/api/upload', uploadRoutes)
+app.use('/api/auth', authRoutes);
+app.use('/api/mpesa', mpesaRoutes);
+app.use('/api/products', productRoutes); // Product routes now available without MongoDB
+app.use('/api/users', userRoutes);
+app.use('/api/orders', orderRoutes);
+app.use('/api/cart', cartRoutes);
+app.use('/api/upload', uploadRoutes);
 
 // Sitemap route (serves XML directly)
-app.use('/', sitemapRoutes)
+app.use('/', sitemapRoutes);
 
 // Health check endpoint
 app.get('/api/health', (req, res) => {
@@ -156,18 +174,18 @@ app.get('/api/health', (req, res) => {
     database:
       mongoose.connection.readyState === 1 ? 'Connected' : 'Disconnected',
     timestamp: new Date().toISOString(),
-  })
-})
+  });
+});
 
 // CSRF token endpoint
 app.get('/api/csrf-token', (req, res) => {
-  const sessionId = crypto.randomBytes(16).toString('hex')
-  const token = generateCsrfToken(sessionId)
+  const sessionId = crypto.randomBytes(16).toString('hex');
+  const token = generateCsrfToken(sessionId);
   res.json({
     csrfToken: token,
     sessionId: sessionId,
-  })
-})
+  });
+});
 
 // Basic route for testing
 app.get('/test', (req, res) => {
@@ -175,33 +193,36 @@ app.get('/test', (req, res) => {
     message: 'Server is running',
     mongodb:
       mongoose.connection.readyState === 1 ? 'connected' : 'disconnected',
-  })
-})
+  });
+});
+
+// Sentry error handler - must be before other error middleware
+app.use(Sentry.Handlers.errorHandler());
 
 // Error handling middleware
 app.use((err, req, res, next) => {
-  console.error('Server error:', err)
-  const status = err.status || 500
-  const message = err.message || 'Something went wrong!'
+  console.error('Server error:', err);
+  const status = err.status || 500;
+  const message = err.message || 'Something went wrong!';
   res.status(status).json({
     success: false,
     message,
     details: process.env.NODE_ENV === 'production' ? undefined : err.stack,
-  })
-})
+  });
+});
 
 // Start server
 app.listen(port, () => {
-  console.log(`\nServer running on port ${port}`)
-  console.log('\nAPI endpoints:')
-  console.log('- POST /api/auth/login')
-  console.log('- GET /api/products')
-  console.log('- GET /api/products/:id')
-  console.log('- GET /api/products/category/:category')
-  console.log('- POST /api/mpesa/test-payment')
-  console.log('- POST /api/mpesa/validate')
-  console.log('- POST /api/mpesa/confirm')
-  console.log('\nTest endpoints:')
-  console.log(`- GET http://localhost:${port}/test`)
-  console.log(`- GET http://localhost:${port}/api/health`)
-})
+  console.log(`\nServer running on port ${port}`);
+  console.log('\nAPI endpoints:');
+  console.log('- POST /api/auth/login');
+  console.log('- GET /api/products');
+  console.log('- GET /api/products/:id');
+  console.log('- GET /api/products/category/:category');
+  console.log('- POST /api/mpesa/test-payment');
+  console.log('- POST /api/mpesa/validate');
+  console.log('- POST /api/mpesa/confirm');
+  console.log('\nTest endpoints:');
+  console.log(`- GET http://localhost:${port}/test`);
+  console.log(`- GET http://localhost:${port}/api/health`);
+});
