@@ -1,7 +1,7 @@
 {
-  "name": "greenbits-store-server",
+  "name": "gamecity-backend",
   "version": "1.0.0",
-  "description": "Backend server for GreenBits Store",
+  "description": "Backend server for GameCity e-commerce platform",
   "main": "index.js",
   "scripts": {
     "start": "node index.js",
