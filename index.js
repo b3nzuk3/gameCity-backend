@@ -20,7 +20,7 @@ const { csrfMiddleware, generateCsrfToken } = require('./middleware/csrfMiddlewa
 
 // Initialize Sentry first - before all other code
 Sentry.init({
-  dsn: 'https://afe29a92f62bea42769abe4a9207df9e@o4511329239367680.ingest.de.sentry.io/4511329282359376',
+  dsn: 'https://7ddb730f492d2cb00388f96fbfcd8583@o4511329239367680.ingest.de.sentry.io/4511329597653072',
   environment: process.env.NODE_ENV || 'development',
   integrations: [
     new Sentry.Integrations.Http({ tracing: true }),
