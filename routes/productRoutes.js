@@ -152,6 +152,7 @@ router.get('/category/:category', cacheMiddleware(300), async (req, res) => {
     const page = parseInt(req.query.page) || 1
     const limit = parseInt(req.query.limit) || 10
     const sort = req.query.sort || '-createdAt'
+    const search = req.query.search
 
     // Map URL slugs to database category names
     const categoryMapping = {
@@ -172,10 +173,18 @@ router.get('/category/:category', cacheMiddleware(300), async (req, res) => {
 
     const dbCategory = categoryMapping[category] || category
     const query = category === 'all' ? {} : { category: dbCategory }
+
+    if (search) {
+      query.$or = [
+        { name: { $regex: search, $options: 'i' } },
+        { description: { $regex: search, $options: 'i' } },
+      ]
+    }
+
     const skip = (page - 1) * limit
 
     console.log(
-      `CategoryRoute: category=${category}, dbCategory=${dbCategory}, page=${page}, limit=${limit}`
+      `CategoryRoute: category=${category}, dbCategory=${dbCategory}, page=${page}, limit=${limit}, search=${search}`
     )
 
     const [products, total] = await Promise.all([
