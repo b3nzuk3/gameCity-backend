@@ -175,9 +175,12 @@ router.get('/category/:category', cacheMiddleware(300), async (req, res) => {
     const query = category === 'all' ? {} : { category: dbCategory }
 
     if (search) {
+      // Escape special regex characters to prevent MongoDB errors
+      const escapedSearch = search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
       query.$or = [
-        { name: { $regex: search, $options: 'i' } },
-        { description: { $regex: search, $options: 'i' } },
+        { name: { $regex: escapedSearch, $options: 'i' } },
+        { description: { $regex: escapedSearch, $options: 'i' } },
+        { brand: { $regex: escapedSearch, $options: 'i' } },
       ]
     }
 
