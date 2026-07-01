@@ -31,24 +31,6 @@ Sentry.init({
 
 // Load environment variables from .env file
 dotenv.config({ path: path.join(__dirname, '.env') });
-console.log(
-  'Loaded .env:',
-  process.env.CLOUDINARY_CLOUD_NAME,
-  process.env.CLOUDINARY_API_KEY,
-  process.env.CLOUDINARY_API_SECRET
-);
-
-// Log loaded environment variables (excluding secrets)
-console.log('Loaded environment variables:', {
-  PORT: process.env.PORT,
-  MPESA_BASE_URL: process.env.MPESA_BASE_URL,
-  MPESA_BUSINESS_SHORT_CODE: process.env.MPESA_BUSINESS_SHORT_CODE,
-  MPESA_VALIDATION_URL: process.env.MPESA_VALIDATION_URL,
-  MPESA_CONFIRMATION_URL: process.env.MPESA_CONFIRMATION_URL,
-  hasConsumerKey: !!process.env.MPESA_CONSUMER_KEY,
-  hasConsumerSecret: !!process.env.MPESA_CONSUMER_SECRET,
-  hasPasskey: !!process.env.MPESA_PASSKEY,
-});
 
 const app = express();
 const port = process.env.PORT || 5001;
@@ -57,10 +39,10 @@ const port = process.env.PORT || 5001;
 app.set('trust proxy', 1);
 
 // Sentry request handler - must be before all other middleware
-app.use(Sentry.Handlers.requestHandler());
+app.use(Sentry.sentryRequestHandler());
 
 // Sentry tracing handler - for performance monitoring
-app.use(Sentry.Handlers.tracingHandler());
+app.use(Sentry.sentryTracingHandler());
 
 // Security middleware
 app.use(
@@ -197,7 +179,7 @@ app.get('/test', (req, res) => {
 });
 
 // Sentry error handler - must be before other error middleware
-app.use(Sentry.Handlers.errorHandler());
+app.use(Sentry.sentryErrorHandler());
 
 // Error handling middleware
 app.use((err, req, res, next) => {
@@ -213,16 +195,7 @@ app.use((err, req, res, next) => {
 
 // Start server
 app.listen(port, () => {
-  console.log(`\nServer running on port ${port}`);
-  console.log('\nAPI endpoints:');
-  console.log('- POST /api/auth/login');
-  console.log('- GET /api/products');
-  console.log('- GET /api/products/:id');
-  console.log('- GET /api/products/category/:category');
-  console.log('- POST /api/mpesa/test-payment');
-  console.log('- POST /api/mpesa/validate');
-  console.log('- POST /api/mpesa/confirm');
-  console.log('\nTest endpoints:');
-  console.log(`- GET http://localhost:${port}/test`);
-  console.log(`- GET http://localhost:${port}/api/health`);
+  if (process.env.NODE_ENV !== 'production') {
+    console.log(`Server running on port ${port}`);
+  }
 });
