@@ -38,11 +38,8 @@ const port = process.env.PORT || 5001;
 // Trust proxy for rate limiting behind load balancers
 app.set('trust proxy', 1);
 
-// Sentry request handler - must be before all other middleware
-app.use(Sentry.sentryRequestHandler());
-
-// Sentry tracing handler - for performance monitoring
-app.use(Sentry.sentryTracingHandler());
+// Sentry request/tracing handlers are set up automatically via integrations above.
+// No manual middleware needed for v10+.
 
 // Security middleware
 app.use(
@@ -179,7 +176,7 @@ app.get('/test', (req, res) => {
 });
 
 // Sentry error handler - must be before other error middleware
-app.use(Sentry.sentryErrorHandler());
+app.use(Sentry.expressErrorHandler());
 
 // Error handling middleware
 app.use((err, req, res, next) => {
