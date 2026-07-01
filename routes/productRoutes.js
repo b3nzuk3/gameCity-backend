@@ -168,6 +168,7 @@ router.get('/category/:category', cacheMiddleware(300), async (req, res) => {
       'cpu-cooling': 'CPU Cooling',
       oem: 'OEM',
       accessories: 'Accessories',
+      laptops: 'Laptops',
       all: 'all',
     }
 
