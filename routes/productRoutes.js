@@ -5,6 +5,7 @@ const mongoose = require('mongoose')
 const multer = require('multer')
 const cloudinary = require('../utils/cloudinary')
 const { cacheMiddleware, clearCache } = require('../middleware/cacheMiddleware')
+const { resolveProductImages, resolveProductImagesBulk } = require('../utils/imageUtils')
 const {
   getProducts,
   getProductById,
@@ -105,8 +106,11 @@ router.get('/', cacheMiddleware(300), async (req, res) => {
 
     const totalPages = Math.ceil(total / limit)
 
+    // Resolve images: prefer R2 URLs, fallback to Cloudinary
+    const resolvedProducts = resolveProductImagesBulk(products)
+
     res.json({
-      products: products.map((p) => ({ ...p, id: p._id.toString() })),
+      products: resolvedProducts.map((p) => ({ ...p, id: p._id.toString() })),
       page,
       pages: totalPages,
       total,
@@ -135,7 +139,10 @@ router.get('/:id', cacheMiddleware(300), async (req, res) => {
       })
     }
 
-    res.json({ ...product, id: product._id.toString() })
+    // Resolve images: prefer R2 URLs, fallback to Cloudinary
+    const resolved = resolveProductImages(product)
+
+    res.json({ ...resolved, id: product._id.toString() })
   } catch (error) {
     console.error('Error fetching product:', error)
     res.status(500).json({
@@ -199,11 +206,14 @@ router.get('/category/:category', cacheMiddleware(300), async (req, res) => {
     const totalPages = Math.ceil(total / limit)
 
     console.log(
-      `CategoryRoute: Found ${products.length} products, total: ${total}`
+      `CategoryRoute: category=${category}, dbCategory=${dbCategory}, page=${page}, limit=${limit}, search=${search}`
     )
 
+    // Resolve images: prefer R2 URLs, fallback to Cloudinary
+    const resolvedProducts = resolveProductImagesBulk(products)
+
     res.json({
-      products: products.map((p) => ({ ...p, id: p._id.toString() })),
+      products: resolvedProducts.map((p) => ({ ...p, id: p._id?.toString() || p.id })),
       page,
       pages: totalPages,
       total,
@@ -247,7 +257,10 @@ router.get('/slug/:slug', async (req, res) => {
       })
     }
 
-    res.json(product)
+    // Resolve images: prefer R2 URLs, fallback to Cloudinary
+    const resolved = resolveProductImages(product)
+
+    res.json(resolved)
   } catch (error) {
     console.error('Error fetching product by slug:', error)
     res.status(500).json({

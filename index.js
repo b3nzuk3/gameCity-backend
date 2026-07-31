@@ -52,8 +52,8 @@ app.use(
         defaultSrc: ["'self'"],
         styleSrc: ["'self'", "'unsafe-inline'"],
         scriptSrc: ["'self'"],
-        imgSrc: ["'self'", 'data:', 'https:', 'https://res.cloudinary.com'],
-        connectSrc: ["'self'", 'https:', 'https://res.cloudinary.com'],
+        imgSrc: ["'self'", 'data:', 'https:', 'https://res.cloudinary.com', 'https://pub-*.r2.dev'],
+        connectSrc: ["'self'", 'https:', 'https://res.cloudinary.com', 'https://*.r2.cloudflarestorage.com'],
       },
     },
   })

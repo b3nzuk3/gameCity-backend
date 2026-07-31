@@ -1,7 +1,6 @@
 const express = require('express')
 const multer = require('multer')
-const cloudinary = require('../utils/cloudinary')
-const { Readable } = require('stream')
+const imageStorage = require('../services/imageStorageService')
 
 const router = express.Router()
 
@@ -21,35 +20,11 @@ const upload = multer({
   },
 }).array('images', 10) // Accept up to 10 images
 
-// Helper function to upload buffer to Cloudinary
-const uploadToCloudinary = (buffer) => {
-  return new Promise((resolve, reject) => {
-    const writeStream = cloudinary.uploader.upload_stream(
-      {
-        folder: 'greenbits-store',
-        resource_type: 'auto',
-      },
-      (error, result) => {
-        if (error) {
-          reject(error)
-        } else {
-          resolve(result)
-        }
-      }
-    )
-
-    const readStream = new Readable({
-      read() {
-        this.push(buffer)
-        this.push(null)
-      },
-    })
-
-    readStream.pipe(writeStream)
-  })
-}
-
-// Handle image upload
+/**
+ * Handle image upload
+ * New uploads go to Cloudflare R2 with Sharp optimization.
+ * Cloudinary is no longer used for new uploads.
+ */
 router.post('/', (req, res) => {
   upload(req, res, async (err) => {
     if (err) {
@@ -62,17 +37,67 @@ router.post('/', (req, res) => {
     }
 
     try {
-      const uploadPromises = req.files.map((file) =>
-        uploadToCloudinary(file.buffer)
-      )
-      const results = await Promise.all(uploadPromises)
-      const urls = results.map((result) => result.secure_url)
-      res.json({ urls })
+      const uploadResults = []
+
+      for (const file of req.files) {
+        try {
+          const result = await imageStorage.upload(file.buffer, file.originalname)
+          uploadResults.push({
+            url: result.url,
+            key: result.key,
+            variants: result.variants,
+          })
+        } catch (uploadErr) {
+          console.error(`[Upload] Failed to upload ${file.originalname}:`, uploadErr.message)
+          // Continue with other files — don't break the whole batch
+          uploadResults.push({
+            url: null,
+            key: null,
+            error: uploadErr.message,
+          })
+        }
+      }
+
+      const urls = uploadResults
+        .filter((r) => r.url)
+        .map((r) => r.url)
+
+      const failures = uploadResults.filter((r) => !r.url)
+
+      res.json({
+        urls,
+        uploaded: urls.length,
+        failed: failures.length,
+        failures: failures.length > 0 ? failures.map((f) => f.error) : undefined,
+      })
     } catch (error) {
-      console.error('Cloudinary upload error:', error)
+      console.error('Upload error:', error)
       res.status(500).json({ error: 'Failed to upload to cloud storage' })
     }
   })
+})
+
+/**
+ * Delete images from R2
+ * POST /api/upload/delete
+ * Body: { keys: ["greenbits-store/xxx.webp", ...] }
+ */
+router.post('/delete', async (req, res) => {
+  try {
+    const { keys } = req.body
+    if (!keys || !Array.isArray(keys)) {
+      return res.status(400).json({ error: 'keys array is required' })
+    }
+
+    for (const key of keys) {
+      await imageStorage.deleteFile(key)
+    }
+
+    res.json({ message: `Deleted ${keys.length} image(s)` })
+  } catch (error) {
+    console.error('Delete error:', error)
+    res.status(500).json({ error: 'Failed to delete images' })
+  }
 })
 
 module.exports = router

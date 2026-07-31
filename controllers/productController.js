@@ -1,6 +1,7 @@
 const Product = require('../models/productModel')
 const Order = require('../models/orderModel')
 const { clearCache } = require('../middleware/cacheMiddleware')
+const { resolveProductImages, resolveProductImagesBulk } = require('../utils/imageUtils')
 
 // @desc    Fetch all products
 // @route   GET /api/products
@@ -39,8 +40,11 @@ const getProducts = async (req, res) => {
       `getProducts: Found ${products.length} products, total count: ${count}`
     )
 
+    // Resolve images: prefer R2 URLs, fallback to Cloudinary
+    const resolvedProducts = resolveProductImagesBulk(products)
+
     res.json({
-      products,
+      products: resolvedProducts,
       page,
       pages: Math.ceil(count / pageSize),
       count,
@@ -58,7 +62,9 @@ const getProductById = async (req, res) => {
     const product = await Product.findById(req.params.id)
 
     if (product) {
-      res.json(product)
+      // Resolve images: prefer R2 URLs, fallback to Cloudinary
+      const resolved = resolveProductImages(product)
+      res.json(resolved)
     } else {
       res.status(404)
       throw new Error('Product not found')
@@ -78,7 +84,9 @@ const createProduct = async (req, res) => {
       price,
       description,
       image,
+      image_r2,
       images,
+      images_r2,
       brand,
       category,
       countInStock,
@@ -92,7 +100,9 @@ const createProduct = async (req, res) => {
       price,
       description,
       image,
+      image_r2: image_r2 || null,
       images,
+      images_r2: images_r2 || [],
       brand,
       category,
       countInStock,
@@ -122,7 +132,9 @@ const updateProduct = async (req, res) => {
       price,
       description,
       image,
+      image_r2,
       images,
+      images_r2,
       brand,
       category,
       countInStock,
@@ -138,7 +150,9 @@ const updateProduct = async (req, res) => {
       product.price = price || product.price
       product.description = description || product.description
       product.image = image || product.image
+      if (image_r2 !== undefined) product.image_r2 = image_r2
       product.images = images || product.images
+      if (images_r2 !== undefined) product.images_r2 = images_r2
       product.brand = brand || product.brand
       product.category = category || product.category
       product.countInStock = countInStock ?? product.countInStock

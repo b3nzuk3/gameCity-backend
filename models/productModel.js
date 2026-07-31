@@ -19,8 +19,14 @@ const reviewSchema = new mongoose.Schema(
 const productSchema = new mongoose.Schema(
   {
     name: { type: String, required: true },
+    // Original Cloudinary URL (kept for fallback during migration)
     image: { type: String, required: true },
+    // Cloudflare R2 URL (set during migration or for new uploads)
+    image_r2: { type: String, default: null },
+    // Original gallery images (Cloudinary URLs)
     images: [{ type: String }],
+    // R2 gallery images
+    images_r2: [{ type: String }],
     description: { type: String, required: true },
     brand: { type: String, required: true },
     category: { type: String, required: true },
@@ -51,6 +57,9 @@ const productSchema = new mongoose.Schema(
     timestamps: true,
   }
 )
+
+// Add index for migration script queries
+productSchema.index({ image_r2: 1 })
 
 const Product = mongoose.model('Product', productSchema)
 
