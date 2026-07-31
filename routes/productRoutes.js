@@ -3,7 +3,6 @@ const router = express.Router()
 const Product = require('../models/productModel')
 const mongoose = require('mongoose')
 const multer = require('multer')
-const cloudinary = require('../utils/cloudinary')
 const { cacheMiddleware, clearCache } = require('../middleware/cacheMiddleware')
 const { resolveProductImages, resolveProductImagesBulk } = require('../utils/imageUtils')
 const {
@@ -58,20 +57,6 @@ const mockProducts = [
     reviews: [],
   },
 ]
-
-// Helper to upload buffer to Cloudinary using a Promise
-function uploadToCloudinary(buffer, folder = 'products') {
-  return new Promise((resolve, reject) => {
-    const stream = cloudinary.uploader.upload_stream(
-      { folder },
-      (error, result) => {
-        if (error) return reject(error)
-        resolve(result)
-      }
-    )
-    stream.end(buffer)
-  })
-}
 
 // Get all products with pagination, filtering, and sorting
 router.get('/', cacheMiddleware(300), async (req, res) => {
