@@ -20,8 +20,10 @@ const PRESETS = {
 async function optimizeImage(inputBuffer, originalName = 'unknown') {
   const results = {}
 
-  // Original: convert to WebP, compress, preserve aspect ratio, never upscale
+  // Original: auto-rotate based on EXIF, convert to WebP, compress
+  // .rotate() with no args reads EXIF orientation, rotates pixels, and strips the tag
   results.original = await sharp(inputBuffer)
+    .rotate() // Fix phone camera orientation (EXIF auto-rotate)
     .webp({ quality: 85, effort: 6 })
     .withMetadata()
     .toBuffer()
@@ -30,6 +32,7 @@ async function optimizeImage(inputBuffer, originalName = 'unknown') {
   for (const [preset, options] of Object.entries(PRESETS)) {
     try {
       results[preset] = await sharp(inputBuffer)
+        .rotate() // Fix phone camera orientation (EXIF auto-rotate)
         .resize({
           width: options.width,
           height: options.height,
