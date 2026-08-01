@@ -23,6 +23,11 @@ const productSchema = new mongoose.Schema(
     image: { type: String, required: true },
     // Cloudflare R2 URL (set during migration or for new uploads)
     image_r2: { type: String, default: null },
+    // R2 image variants (thumbnail, medium, large URLs)
+    image_r2_variants: {
+      type: mongoose.Schema.Types.Mixed,
+      default: null,
+    },
     // Original gallery images (Cloudinary URLs)
     images: [{ type: String }],
     // R2 gallery images

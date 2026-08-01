@@ -78,9 +78,34 @@ function resolveProductImagesBulk(products) {
   return products.map(resolveProductImages)
 }
 
+/**
+ * Resolve the best image URL for a given size context.
+ * @param {Object} product
+ * @param {string} size - 'thumbnail' | 'medium' | 'large' | 'original'
+ * @returns {string|null}
+ */
+function resolveImageUrl(product, size = 'original') {
+  if (!product) return null
+
+  const hasR2 = !!product.image_r2
+  const variants = product.image_r2_variants || {}
+
+  // If R2 is available, use variants
+  if (hasR2) {
+    if (size !== 'original' && variants[size]) {
+      return variants[size]
+    }
+    return product.image_r2
+  }
+
+  // Fallback to Cloudinary (no variants available)
+  return product.image || null
+}
+
 module.exports = {
   resolveMainImage,
   resolveAllImages,
   resolveProductImages,
   resolveProductImagesBulk,
+  resolveImageUrl,
 }

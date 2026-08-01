@@ -85,6 +85,7 @@ const createProduct = async (req, res) => {
       description,
       image,
       image_r2,
+      image_r2_variants,
       images,
       images_r2,
       brand,
@@ -101,6 +102,7 @@ const createProduct = async (req, res) => {
       description,
       image,
       image_r2: image_r2 || null,
+      image_r2_variants: image_r2_variants || null,
       images,
       images_r2: images_r2 || [],
       brand,
@@ -133,6 +135,7 @@ const updateProduct = async (req, res) => {
       description,
       image,
       image_r2,
+      image_r2_variants,
       images,
       images_r2,
       brand,
@@ -151,6 +154,7 @@ const updateProduct = async (req, res) => {
       product.description = description || product.description
       product.image = image || product.image
       if (image_r2 !== undefined) product.image_r2 = image_r2
+      if (image_r2_variants !== undefined) product.image_r2_variants = image_r2_variants
       product.images = images || product.images
       if (images_r2 !== undefined) product.images_r2 = images_r2
       product.brand = brand || product.brand

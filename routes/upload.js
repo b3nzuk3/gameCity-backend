@@ -62,10 +62,15 @@ router.post('/', (req, res) => {
         .filter((r) => r.url)
         .map((r) => r.url)
 
+      const variants = uploadResults
+        .filter((r) => r.url && r.variants)
+        .map((r) => r.variants)
+
       const failures = uploadResults.filter((r) => !r.url)
 
       res.json({
         urls,
+        variants: variants.length > 0 ? variants : undefined,
         uploaded: urls.length,
         failed: failures.length,
         failures: failures.length > 0 ? failures.map((f) => f.error) : undefined,
