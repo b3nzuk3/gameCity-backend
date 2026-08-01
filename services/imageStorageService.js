@@ -55,27 +55,31 @@ async function upload(buffer, originalName) {
 
 /**
  * Delete an image and its variants from R2.
- * @param {string} key – the R2 object key
+ * @param {string|string[]} keys – the R2 object key(s)
  */
-async function deleteFile(key) {
-  if (!key) return
+async function deleteFile(keys) {
+  if (!keys) return
+  if (!Array.isArray(keys)) keys = [keys]
 
   const ext = '.webp'
-  // Delete variants
-  for (const preset of ['thumbnail', 'medium', 'large']) {
-    const variantKey = key.replace(ext, `-${preset}${ext}`)
-    try {
-      await r2Service.deleteFromR2(variantKey)
-    } catch (err) {
-      console.error(`[ImageStorage] Failed to delete variant ${variantKey}:`, err.message)
+  for (const key of keys) {
+    if (!key) continue
+    // Delete variants
+    for (const preset of ['thumbnail', 'medium', 'large']) {
+      const variantKey = key.replace(ext, `-${preset}${ext}`)
+      try {
+        await r2Service.deleteFromR2(variantKey)
+      } catch (err) {
+        console.error(`[ImageStorage] Failed to delete variant ${variantKey}:`, err.message)
+      }
     }
-  }
 
-  // Delete main
-  try {
-    await r2Service.deleteFromR2(key)
-  } catch (err) {
-    console.error(`[ImageStorage] Failed to delete main ${key}:`, err.message)
+    // Delete main
+    try {
+      await r2Service.deleteFromR2(key)
+    } catch (err) {
+      console.error(`[ImageStorage] Failed to delete main ${key}:`, err.message)
+    }
   }
 }
 

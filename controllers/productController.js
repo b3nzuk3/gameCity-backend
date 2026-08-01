@@ -2,6 +2,52 @@ const Product = require('../models/productModel')
 const Order = require('../models/orderModel')
 const { clearCache } = require('../middleware/cacheMiddleware')
 const { resolveProductImages, resolveProductImagesBulk } = require('../utils/imageUtils')
+const imageStorage = require('../services/imageStorageService')
+
+/**
+ * Delete R2 images for a product (main + gallery).
+ * Non-blocking — failures are logged but don't break the operation.
+ */
+async function deleteProductR2Images(product) {
+  const keysToDelete = []
+
+  // Main image
+  if (product.image_r2) {
+    const key = imageStorage.extractKey(product.image_r2)
+    if (key) keysToDelete.push(key)
+  }
+
+  // Gallery images
+  if (product.images_r2 && product.images_r2.length > 0) {
+    for (const url of product.images_r2) {
+      const key = imageStorage.extractKey(url)
+      if (key) keysToDelete.push(key)
+    }
+  }
+
+  if (keysToDelete.length === 0) return
+
+  try {
+    await imageStorage.deleteFile(keysToDelete)
+    console.log(`[ProductController] Deleted ${keysToDelete.length} R2 image(s) for product ${product._id}`)
+  } catch (err) {
+    console.error(`[ProductController] Failed to delete R2 images for product ${product._id}:`, err.message)
+  }
+}
+
+/**
+ * Delete old R2 images when main image changes.
+ */
+async function cleanupOldMainImage(oldProduct, newImageUrl) {
+  if (!oldProduct.image_r2 || oldProduct.image_r2 === newImageUrl) return
+
+  try {
+    const key = imageStorage.extractKey(oldProduct.image_r2)
+    if (key) await imageStorage.deleteFile([key])
+  } catch (err) {
+    console.error(`[ProductController] Failed to cleanup old main image:`, err.message)
+  }
+}
 
 // @desc    Fetch all products
 // @route   GET /api/products
@@ -149,6 +195,9 @@ const updateProduct = async (req, res) => {
     const product = await Product.findById(req.params.id)
 
     if (product) {
+      // Save old R2 URL for cleanup
+      const oldImageR2 = product.image_r2
+
       product.name = name || product.name
       product.price = price || product.price
       product.description = description || product.description
@@ -186,6 +235,11 @@ const updateProduct = async (req, res) => {
 
       const updatedProduct = await product.save()
 
+      // Cleanup old R2 image if main image changed
+      if (product.image_r2 !== oldImageR2) {
+        await cleanupOldMainImage({ image_r2: oldImageR2 }, product.image_r2)
+      }
+
       // Invalidate cached product listings so changes reflect in grids/cards
       await clearCache('cache:/api/products')
 
@@ -205,9 +259,12 @@ const updateProduct = async (req, res) => {
 const deleteProduct = async (req, res) => {
   try {
     console.log('DELETE /api/products/:id called with id:', req.params.id)
-    const product = await Product.findByIdAndDelete(req.params.id)
-    console.log('Product deleted:', product)
+    const product = await Product.findById(req.params.id)
+    console.log('Product found:', product?.name)
     if (product) {
+      // Delete R2 images before removing from DB
+      await deleteProductR2Images(product)
+      await Product.findByIdAndDelete(req.params.id)
       await clearCache()
       res.json({ message: 'Product removed' })
     } else {
