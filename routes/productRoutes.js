@@ -218,13 +218,18 @@ router.get('/slug/:slug', async (req, res) => {
   try {
     const { slug } = req.params
 
-    // Remove the '-nairobi' suffix if present
-    const cleanSlug = slug.replace(/-nairobi$/, '')
+    // Remove the '-nairobi' suffix and optional product-ID disambiguator.
+    const normalizedSlug = slug.replace(/-nairobi$/, '')
+    const idSuffixMatch = normalizedSlug.match(/-([a-f\d]{24})$/i)
+    const cleanSlug = idSuffixMatch
+      ? normalizedSlug.slice(0, -idSuffixMatch[0].length)
+      : normalizedSlug
 
     // Find product by matching the slug with product name
     const products = await Product.find({})
 
     const product = products.find((p) => {
+      if (idSuffixMatch && String(p._id) !== idSuffixMatch[1]) return false
       const productSlug = p.name
         .toLowerCase()
         .trim()
