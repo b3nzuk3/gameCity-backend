@@ -63,21 +63,30 @@ app.use(
 app.use(compression());
 
 // Middleware
+const hardcodedAllowedOrigins = [
+  'https://www.gamecityelectronics.com',
+  'https://www.gamecityelectronics.co.ke',
+  'https://gamecityelectronics.co.ke',
+  'https://game-city-one.vercel.app',
+  'http://localhost:5173',
+  'http://localhost:3000',
+  'http://localhost:8080',
+  'http://localhost:4173',
+  'http://127.0.0.1:4173',
+  'http://localhost:4174',
+  'http://127.0.0.1:4174',
+];
+
+const envAllowedOrigins = (process.env.ALLOWED_ORIGINS || '')
+  .split(',')
+  .map((origin) => origin.trim().replace(/\/$/, ''))
+  .filter(Boolean);
+
+const allowedOrigins = [...new Set([...hardcodedAllowedOrigins, ...envAllowedOrigins])];
+
 app.use(
   cors({
-    origin: [
-      'https://www.gamecityelectronics.com',
-      'https://www.gamecityelectronics.co.ke',
-      'https://gamecityelectronics.co.ke',
-      'https://game-city-one.vercel.app',
-      'http://localhost:5173',
-      'http://localhost:3000',
-      'http://localhost:8080',
-      'http://localhost:4173',
-      'http://127.0.0.1:4173',
-      'http://localhost:4174',
-      'http://127.0.0.1:4174',
-    ],
+    origin: allowedOrigins,
     credentials: true,
     allowedHeaders: ['Content-Type', 'Authorization'],
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
