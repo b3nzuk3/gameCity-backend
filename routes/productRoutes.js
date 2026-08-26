@@ -17,6 +17,24 @@ const {
   clearProductCache,
 } = require('../controllers/productController')
 const { protect, admin } = require('../middleware/authMiddleware')
+const { buildProductFilterQuery } = require('../utils/productFilters')
+
+const categoryMapping = {
+  'pre-built': 'PRE-BUILT',
+  monitors: 'Monitors',
+  'graphics-cards': 'Graphics Cards',
+  memory: 'Memory',
+  processors: 'Processors',
+  storage: 'Storage',
+  motherboards: 'Motherboards',
+  cases: 'Cases',
+  'power-supply': 'Power Supply',
+  'cpu-cooling': 'CPU Cooling',
+  oem: 'OEM',
+  accessories: 'Accessories',
+  laptops: 'Laptops',
+  all: 'all',
+}
 
 const storage = multer.memoryStorage()
 const upload = multer({ storage })
@@ -112,6 +130,27 @@ router.get('/', cacheMiddleware(300), async (req, res) => {
 
 router.get('/brands', getUniqueBrands)
 
+router.get('/category/:category/count', cacheMiddleware(300), async (req, res) => {
+  try {
+    const { category } = req.params
+    const dbCategory = categoryMapping[category] || category
+    const categoryQuery = category === 'all' ? {} : { category: dbCategory }
+    const filterQuery = buildProductFilterQuery(req.query)
+    const total = await Product.countDocuments({
+      ...categoryQuery,
+      ...filterQuery,
+    })
+
+    res.json({ total })
+  } catch (error) {
+    console.error('Error counting filtered category products:', error)
+    res.status(500).json({
+      success: false,
+      error: 'Failed to count filtered products',
+    })
+  }
+})
+
 // Get product by ID with caching
 router.get('/:id', cacheMiddleware(300), async (req, res) => {
   try {
@@ -147,23 +186,6 @@ router.get('/category/:category', cacheMiddleware(300), async (req, res) => {
     const search = req.query.search
 
     // Map URL slugs to database category names
-    const categoryMapping = {
-      'pre-built': 'PRE-BUILT',
-      monitors: 'Monitors',
-      'graphics-cards': 'Graphics Cards',
-      memory: 'Memory',
-      processors: 'Processors',
-      storage: 'Storage',
-      motherboards: 'Motherboards',
-      cases: 'Cases',
-      'power-supply': 'Power Supply',
-      'cpu-cooling': 'CPU Cooling',
-      oem: 'OEM',
-      accessories: 'Accessories',
-      laptops: 'Laptops',
-      all: 'all',
-    }
-
     const dbCategory = categoryMapping[category] || category
     const query = category === 'all' ? {} : { category: dbCategory }
 
