@@ -14,9 +14,12 @@ const orderRoutes = require('./routes/orderRoutes');
 const cartRoutes = require('./routes/cartRoutes');
 const mpesaRoutes = require('./routes/mpesa');
 const authRoutes = require('./routes/authRoutes');
+const adminAuthRoutes = require('./routes/adminAuthRoutes');
 const uploadRoutes = require('./routes/upload');
 const sitemapRoutes = require('./routes/sitemapRoutes');
 const { csrfMiddleware, generateCsrfToken } = require('./middleware/csrfMiddleware');
+const { assertSecurityConfiguration } = require('./config/security');
+const { getAllowedOrigins } = require('./config/origins');
 
 // Initialize Sentry first - before all other code
 Sentry.init({
@@ -31,6 +34,7 @@ Sentry.init({
 
 // Load environment variables from .env file
 dotenv.config({ path: path.join(__dirname, '.env') });
+assertSecurityConfiguration();
 
 const app = express();
 const port = process.env.PORT || 5001;
@@ -63,32 +67,13 @@ app.use(
 app.use(compression());
 
 // Middleware
-const hardcodedAllowedOrigins = [
-  'https://www.gamecityelectronics.com',
-  'https://www.gamecityelectronics.co.ke',
-  'https://gamecityelectronics.co.ke',
-  'https://game-city-one.vercel.app',
-  'http://localhost:5173',
-  'http://localhost:3000',
-  'http://localhost:8080',
-  'http://localhost:4173',
-  'http://127.0.0.1:4173',
-  'http://localhost:4174',
-  'http://127.0.0.1:4174',
-];
-
-const envAllowedOrigins = (process.env.ALLOWED_ORIGINS || '')
-  .split(',')
-  .map((origin) => origin.trim().replace(/\/$/, ''))
-  .filter(Boolean);
-
-const allowedOrigins = [...new Set([...hardcodedAllowedOrigins, ...envAllowedOrigins])];
+const allowedOrigins = getAllowedOrigins();
 
 app.use(
   cors({
     origin: allowedOrigins,
     credentials: true,
-    allowedHeaders: ['Content-Type', 'Authorization'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-CSRF-Token', 'X-Session-Id'],
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
     exposedHeaders: ['Cross-Origin-Resource-Policy'],
   })
@@ -149,6 +134,7 @@ app.get('/debug/routes', (req, res) => {
 
 // Routes that don't require MongoDB
 app.use('/api/auth', authRoutes);
+app.use('/api/admin/auth', adminAuthRoutes);
 app.use('/api/mpesa', mpesaRoutes);
 app.use('/api/products', productRoutes); // Product routes now available without MongoDB
 app.use('/api/users', userRoutes);

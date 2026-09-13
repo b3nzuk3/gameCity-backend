@@ -1,6 +1,7 @@
 
 const User = require('../models/userModel');
 const generateToken = require('../utils/generateToken');
+const { serializeUsers } = require('../utils/userSerializer');
 
 // @desc    Auth user & get token
 // @route   POST /api/users/login
@@ -168,7 +169,7 @@ const addUserAddress = async (req, res) => {
 const getUsers = async (req, res) => {
   try {
     const users = await User.find({});
-    res.json(users);
+    res.json(serializeUsers(users));
   } catch (error) {
     res.status(500).json({ message: 'Server error' });
   }

@@ -1,67 +1,50 @@
+const jwt = require('jsonwebtoken')
+const User = require('../models/userModel')
+const { getJwtSecret } = require('../config/security')
 
-const jwt = require('jsonwebtoken');
-const User = require('../models/userModel');
+const SAFE_USER_SELECT = '-password -verificationToken -resetPasswordToken -resetPasswordExpires'
 
 const protect = async (req, res, next) => {
-  let token;
-  
-  if (
-    req.headers.authorization &&
-    req.headers.authorization.startsWith('Bearer')
-  ) {
-    try {
-      token = req.headers.authorization.split(' ')[1];
-      
-      const decoded = jwt.verify(token, process.env.JWT_SECRET);
-      
-      req.user = await User.findById(decoded.id).select('-password');
-      
-      next();
-    } catch (error) {
-      console.error(error);
-      res.status(401);
-      res.json({ message: 'Not authorized, token failed' });
+  const authorization = req.headers.authorization || ''
+  if (!/^Bearer\s+/i.test(authorization)) {
+    return res.status(401).json({ message: 'Not authorized, no token' })
+  }
+
+  try {
+    const token = authorization.replace(/^Bearer\s+/i, '').trim()
+    const decoded = jwt.verify(token, getJwtSecret())
+    req.user = await User.findById(decoded.id).select(SAFE_USER_SELECT)
+
+    if (!req.user) {
+      return res.status(401).json({ message: 'Not authorized, user not found' })
     }
+
+    return next()
+  } catch (error) {
+    return res.status(401).json({ message: 'Not authorized, token failed' })
   }
-  
-  if (!token) {
-    res.status(401);
-    res.json({ message: 'Not authorized, no token' });
-  }
-};
+}
 
 const admin = (req, res, next) => {
   if (req.user && req.user.isAdmin) {
-    next();
-  } else {
-    res.status(401);
-    res.json({ message: 'Not authorized as an admin' });
+    return next()
   }
-};
+  return res.status(403).json({ message: 'Not authorized as an admin' })
+}
 
-// Optional auth middleware - sets req.user if token is present, but doesn't require it
 const optionalAuth = async (req, res, next) => {
-  let token;
-  
-  if (
-    req.headers.authorization &&
-    req.headers.authorization.startsWith('Bearer')
-  ) {
+  const authorization = req.headers.authorization || ''
+  if (/^Bearer\s+/i.test(authorization)) {
     try {
-      token = req.headers.authorization.split(' ')[1];
-      
-      const decoded = jwt.verify(token, process.env.JWT_SECRET);
-      
-      req.user = await User.findById(decoded.id).select('-password');
+      const token = authorization.replace(/^Bearer\s+/i, '').trim()
+      const decoded = jwt.verify(token, getJwtSecret())
+      req.user = await User.findById(decoded.id).select(SAFE_USER_SELECT)
     } catch (error) {
-      console.error('Optional auth error:', error);
-      // Don't fail if token is invalid, just continue without user
-      req.user = null;
+      req.user = null
     }
   }
-  
-  // Always continue, even if no token or invalid token
-  next();
-};
 
-module.exports = { protect, admin, optionalAuth };
+  return next()
+}
+
+module.exports = { protect, admin, optionalAuth, SAFE_USER_SELECT }
