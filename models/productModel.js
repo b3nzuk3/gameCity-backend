@@ -35,8 +35,17 @@ const productSchema = new mongoose.Schema(
     description: { type: String, required: true },
     brand: { type: String, required: true },
     category: { type: String, required: true },
-    price: { type: Number, required: true, default: 0 },
-    countInStock: { type: Number, required: true, default: 0 },
+    price: { type: Number, required: true, default: 0, min: 0 },
+    countInStock: {
+      type: Number,
+      required: true,
+      default: 0,
+      min: 0,
+      validate: {
+        validator: Number.isInteger,
+        message: 'countInStock must be an integer',
+      },
+    },
     condition: {
       type: String,
       enum: ['New', 'Pre-Owned'],
@@ -53,7 +62,7 @@ const productSchema = new mongoose.Schema(
         enum: ['percentage', 'fixed'],
         default: 'percentage',
       },
-      amount: { type: Number, default: 0 },
+      amount: { type: Number, default: 0, min: 0 },
       startDate: { type: Date },
       endDate: { type: Date },
     },

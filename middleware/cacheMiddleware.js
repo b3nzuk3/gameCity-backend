@@ -1,82 +1,83 @@
 const Redis = require('ioredis')
 
-// Configure Redis client with TLS for production
-const redisConfig = {
-  host: process.env.REDIS_HOST,
-  port: process.env.REDIS_PORT,
-  username: process.env.REDIS_USERNAME,
-  password: process.env.REDIS_PASSWORD,
-  tls: process.env.NODE_ENV === 'production' ? {} : undefined,
-  retryStrategy: (times) => {
-    const delay = Math.min(times * 50, 2000)
-    return delay
-  },
+const hasRedisConfig = Boolean(process.env.REDIS_URL || process.env.REDIS_HOST)
+const redis = hasRedisConfig
+  ? new Redis(process.env.REDIS_URL || {
+      host: process.env.REDIS_HOST,
+      port: process.env.REDIS_PORT,
+      username: process.env.REDIS_USERNAME,
+      password: process.env.REDIS_PASSWORD,
+      tls: process.env.NODE_ENV === 'production' ? {} : undefined,
+      retryStrategy: (times) => Math.min(times * 50, 2000),
+    })
+  : null
+
+if (redis) {
+  redis.on('error', (err) => console.error('Redis connection error:', err))
+  redis.on('connect', () => console.log('Connected to Redis'))
 }
 
-const redis = new Redis(redisConfig)
+const cacheMiddleware = (duration) => async (req, res, next) => {
+  if (req.method !== 'GET' || !redis) return next()
 
-redis.on('error', (err) => {
-  console.error('Redis connection error:', err)
-})
-
-redis.on('connect', () => {
-  console.log('Connected to Redis')
-})
-
-const cacheMiddleware = (duration) => {
-  return async (req, res, next) => {
-    // Skip caching for non-GET requests
-    if (req.method !== 'GET') {
-      return next()
+  const key = `cache:${req.originalUrl || req.url}`
+  try {
+    const cachedResponse = await redis.get(key)
+    if (cachedResponse) {
+      const parsed = JSON.parse(cachedResponse)
+      const cached = parsed && Object.prototype.hasOwnProperty.call(parsed, 'body')
+        ? parsed
+        : { status: 200, body: parsed }
+      res.status(cached.status || 200)
+      return res.json(cached.body)
     }
 
-    const key = `cache:${req.originalUrl || req.url}`
-
-    try {
-      const cachedResponse = await redis.get(key)
-
-      if (cachedResponse) {
-        return res.json(JSON.parse(cachedResponse))
+    const originalJson = res.json.bind(res)
+    res.json = (body) => {
+      const status = res.statusCode
+      if (status >= 200 && status < 300) {
+        redis.setex(key, duration, JSON.stringify({ status, body })).catch((err) => console.error('Redis set error:', err))
       }
-
-      // Modify res.json to cache the response
-      const originalJson = res.json
-      res.json = function (body) {
-        redis
-          .setex(key, duration, JSON.stringify(body))
-          .catch((err) => console.error('Redis set error:', err))
-        return originalJson.call(this, body)
-      }
-
-      next()
-    } catch (error) {
-      console.error('Cache middleware error:', error)
-      next()
+      return originalJson(body)
     }
+    return next()
+  } catch (error) {
+    console.error('Cache middleware error:', error)
+    return next()
   }
 }
 
-const clearCache = async (prefix = 'cache:/api/products') => {
-  try {
-    const stream = redis.scanStream({
-      match: `${prefix}*`,
-      count: 100,
-    })
+const clearCache = (prefix = 'cache:/api/products') => {
+  if (!redis) return Promise.resolve()
+  return new Promise((resolve) => {
+    const stream = redis.scanStream({ match: `${prefix}*`, count: 100 })
     const keysToDelete = []
-    stream.on('data', (keys) => {
-      if (keys.length) {
-        keysToDelete.push(...keys)
+    let settled = false
+    const finish = () => {
+      if (!settled) {
+        settled = true
+        resolve()
       }
+    }
+
+    stream.on('data', (keys) => {
+      if (keys.length) keysToDelete.push(...keys)
+    })
+    stream.on('error', (error) => {
+      console.error('Error scanning cache keys:', error)
+      finish()
     })
     stream.on('end', async () => {
-      if (keysToDelete.length > 0) {
+      if (keysToDelete.length === 0) return finish()
+      try {
         await redis.del(keysToDelete)
-        console.log(`Cleared cache for keys: ${keysToDelete.join(', ')}`)
+        console.log(`Cleared cache for ${keysToDelete.length} key(s)`)
+      } catch (error) {
+        console.error('Error deleting cache keys:', error)
       }
+      finish()
     })
-  } catch (error) {
-    console.error('Error clearing cache:', error)
-  }
+  })
 }
 
 module.exports = { cacheMiddleware, clearCache }

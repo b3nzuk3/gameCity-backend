@@ -1,6 +1,6 @@
 const { S3Client, PutObjectCommand, DeleteObjectCommand, HeadObjectCommand } = require('@aws-sdk/client-s3')
 const { getSignedUrl } = require('@aws-sdk/s3-request-presigner')
-const path = require('path')
+
 
 /**
  * Cloudflare R2 Storage Service
@@ -135,9 +135,10 @@ function getPublicUrl(key) {
  */
 function generateKey(originalName, folder = 'greenbits-store') {
   const { v4: uuidv4 } = require('uuid')
-  const ext = path.extname(originalName).toLowerCase() || '.webp'
+  // Sharp always returns WebP bytes, so the object key and every derived
+  // variant must use the same extension regardless of the source filename.
   const timestamp = Date.now()
-  return `${folder}/${timestamp}-${uuidv4()}${ext}`
+  return `${folder}/${timestamp}-${uuidv4()}.webp`
 }
 
 module.exports = {

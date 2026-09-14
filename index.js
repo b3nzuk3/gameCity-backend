@@ -11,10 +11,13 @@ const crypto = require('crypto');
 const userRoutes = require('./routes/userRoutes');
 const productRoutes = require('./routes/productRoutes');
 const orderRoutes = require('./routes/orderRoutes');
+const adminOrderRoutes = require('./routes/adminOrderRoutes');
 const cartRoutes = require('./routes/cartRoutes');
 const mpesaRoutes = require('./routes/mpesa');
 const authRoutes = require('./routes/authRoutes');
 const adminAuthRoutes = require('./routes/adminAuthRoutes');
+const adminProductRoutes = require('./routes/adminProductRoutes');
+const homepageRoutes = require('./routes/homepageRoutes');
 const uploadRoutes = require('./routes/upload');
 const sitemapRoutes = require('./routes/sitemapRoutes');
 const { csrfMiddleware, generateCsrfToken } = require('./middleware/csrfMiddleware');
@@ -135,6 +138,9 @@ app.get('/debug/routes', (req, res) => {
 // Routes that don't require MongoDB
 app.use('/api/auth', authRoutes);
 app.use('/api/admin/auth', adminAuthRoutes);
+app.use('/api/admin/products', adminProductRoutes);
+app.use('/api/admin/orders', adminOrderRoutes);
+app.use('/api', homepageRoutes);
 app.use('/api/mpesa', mpesaRoutes);
 app.use('/api/products', productRoutes); // Product routes now available without MongoDB
 app.use('/api/users', userRoutes);
@@ -184,6 +190,7 @@ app.use((err, req, res, next) => {
   const message = err.message || 'Something went wrong!';
   res.status(status).json({
     success: false,
+    code: err.code,
     message,
     details: process.env.NODE_ENV === 'production' ? undefined : err.stack,
   });

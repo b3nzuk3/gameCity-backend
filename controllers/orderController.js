@@ -1,5 +1,6 @@
 const Order = require('../models/orderModel')
 const Product = require('../models/productModel')
+const User = require('../models/userModel')
 const mongoose = require('mongoose')
 
 // @desc    Create new order
@@ -206,40 +207,95 @@ const getMyOrders = async (req, res) => {
   }
 }
 
-// @desc    Get all orders
-// @route   GET /api/orders
+function escapeRegex(value) {
+  return String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
+function parseListInteger(value, fallback, maximum) {
+  const parsed = Number.parseInt(value, 10)
+  if (!Number.isInteger(parsed) || parsed < 1) return fallback
+  return Math.min(parsed, maximum)
+}
+
+function formatAdminOrder(order) {
+  return {
+    id: String(order._id),
+    user: order.user
+      ? {
+          id: String(order.user._id || order.user.id || ''),
+          name: order.user.name,
+          email: order.user.email,
+        }
+      : null,
+    guestName: order.guestName || '',
+    guestEmail: order.guestEmail || '',
+    guestPhone: order.guestPhone || '',
+    order_items: (order.orderItems || []).map((item) => ({
+      product: item.product,
+      name: item.name,
+      quantity: item.quantity,
+      price: item.price,
+      image: item.image,
+    })),
+    paymentMethod: order.paymentMethod,
+    payment_result: order.paymentResult,
+    total_price: order.totalPrice,
+    is_paid: order.isPaid,
+    paid_at: order.paidAt,
+    is_delivered: order.isDelivered,
+    delivered_at: order.deliveredAt,
+    status: order.status,
+    createdAt: order.createdAt,
+    updatedAt: order.updatedAt,
+  }
+}
+
+// @desc    Get all orders for admin clients
+// @route   GET /api/admin/orders
 // @access  Private/Admin
 const getOrders = async (req, res) => {
   try {
-    const orders = await Order.find({})
-      .populate('user', 'id name')
+    const hasListQuery = ['page', 'limit', 'search', 'status'].some((key) => req.query[key] !== undefined)
+    const page = parseListInteger(req.query.page, 1, 1000000)
+    const limit = parseListInteger(req.query.limit, 25, 100)
+    const query = {}
+
+    if (req.query.status === 'pending' || req.query.status === 'completed') {
+      query.status = req.query.status
+    }
+
+    const search = String(req.query.search || '').trim()
+    if (search) {
+      const pattern = new RegExp(escapeRegex(search), 'i')
+      const matchingUsers = await User.find({ $or: [{ name: pattern }, { email: pattern }] }).select('_id').lean()
+      const searchClauses = [
+        { guestName: pattern },
+        { guestEmail: pattern },
+        { guestPhone: pattern },
+      ]
+      if (mongoose.isValidObjectId(search)) searchClauses.push({ _id: search })
+      if (matchingUsers.length) searchClauses.push({ user: { $in: matchingUsers.map((user) => user._id) } })
+      query.$or = searchClauses
+    }
+
+    const orderQuery = Order.find(query)
+      .sort({ createdAt: -1, _id: -1 })
+      .populate('user', 'id name email')
       .populate('orderItems.product')
+    if (hasListQuery) orderQuery.skip((page - 1) * limit).limit(limit)
 
-    const formattedOrders = orders.map((order) => ({
-      id: order._id,
-      user: order.user,
-      order_items: order.orderItems.map((item) => ({
-        product: item.product,
-        name: item.name,
-        quantity: item.quantity,
-        price: item.price,
-        image: item.image,
-      })),
-      paymentMethod: order.paymentMethod,
-      payment_result: order.paymentResult,
-      total_price: order.totalPrice,
-      is_paid: order.isPaid,
-      paid_at: order.paidAt,
-      is_delivered: order.isDelivered,
-      delivered_at: order.deliveredAt,
-      status: order.status,
-      createdAt: order.createdAt,
-      updatedAt: order.updatedAt,
-    }))
+    const [orders, total] = await Promise.all([
+      orderQuery,
+      hasListQuery ? Order.countDocuments(query) : Promise.resolve(null),
+    ])
+    const formattedOrders = orders.map(formatAdminOrder)
 
-    res.json(formattedOrders)
+    if (!hasListQuery) return res.json(formattedOrders)
+    const pages = Math.max(1, Math.ceil(total / limit))
+    return res.json({ orders: formattedOrders, page, pages, total, hasMore: page < pages })
   } catch (error) {
-    res.status(500).json({ message: 'Server error' })
+    console.error('Error fetching admin orders:', error)
+    return res.status(500).json({ message: 'Server error' })
   }
 }
 
@@ -265,4 +321,5 @@ module.exports = {
   getMyOrders,
   getOrders,
   deleteOrder,
+  formatAdminOrder,
 }

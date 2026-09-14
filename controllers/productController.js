@@ -3,36 +3,25 @@ const Order = require('../models/orderModel')
 const { clearCache } = require('../middleware/cacheMiddleware')
 const { resolveProductImages, resolveProductImagesBulk } = require('../utils/imageUtils')
 const imageStorage = require('../services/imageStorageService')
+const { hasOwn, validateOffer, validateProductPayload } = require('../utils/productValidation')
 
-/**
- * Delete R2 images for a product (main + gallery).
- * Non-blocking — failures are logged but don't break the operation.
- */
 async function deleteProductR2Images(product) {
   const keysToDelete = []
-
-  // Main image
   if (product.image_r2) {
     const key = imageStorage.extractKey(product.image_r2)
     if (key) keysToDelete.push(key)
   }
-
-  // Gallery images
-  if (product.images_r2 && product.images_r2.length > 0) {
-    for (const url of product.images_r2) {
-      const key = imageStorage.extractKey(url)
-      if (key) keysToDelete.push(key)
-    }
+  for (const url of product.images_r2 || []) {
+    const key = imageStorage.extractKey(url)
+    if (key) keysToDelete.push(key)
   }
+  if (keysToDelete.length === 0) return { deleted: [], failed: [] }
 
-  if (keysToDelete.length === 0) return
-
-  try {
-    await imageStorage.deleteFile(keysToDelete)
-    console.log(`[ProductController] Deleted ${keysToDelete.length} R2 image(s) for product ${product._id}`)
-  } catch (err) {
-    console.error(`[ProductController] Failed to delete R2 images for product ${product._id}:`, err.message)
+  const result = await imageStorage.deleteFile([...new Set(keysToDelete)])
+  if (result.failed.length > 0) {
+    console.error(`[ProductController] Failed to delete ${result.failed.length} R2 image object(s) for product ${product._id}`)
   }
+  return result
 }
 
 /**
@@ -125,48 +114,37 @@ const getProductById = async (req, res) => {
 // @access  Private/Admin
 const createProduct = async (req, res) => {
   try {
-    const {
-      name,
-      price,
-      description,
-      image,
-      image_r2,
-      image_r2_variants,
-      images,
-      images_r2,
-      brand,
-      category,
-      countInStock,
-      condition,
-      specifications,
-      offer,
-    } = req.body
+    const payload = {
+      ...(req.body || {}),
+      image: req.body?.image || req.body?.image_r2 || '',
+      condition: req.body?.condition || 'New',
+    }
+    const validationErrors = validateProductPayload(payload, { partial: false })
+    if (Object.keys(validationErrors).length > 0) {
+      return res.status(400).json({ code: 'INVALID_PRODUCT', message: Object.values(validationErrors)[0], fields: validationErrors })
+    }
 
     const product = new Product({
-      name,
-      price,
-      description,
-      image,
-      image_r2: image_r2 || null,
-      image_r2_variants: image_r2_variants || null,
-      images,
-      images_r2: images_r2 || [],
-      brand,
-      category,
-      countInStock,
-      condition,
-      specifications,
-      offer,
-      user: req.user._id,
+      ...payload,
+      image_r2: payload.image_r2 || null,
+      image_r2_variants: payload.image_r2_variants || null,
+      images: Array.isArray(payload.images) ? payload.images : [],
+      images_r2: Array.isArray(payload.images_r2) ? payload.images_r2 : [],
+      condition: payload.condition || 'New',
+      specifications: payload.specifications || {},
+      offer: payload.offer || undefined,
       numReviews: 0,
     })
 
     const createdProduct = await product.save()
     await clearCache()
-    res.status(201).json(createdProduct)
+    return res.status(201).json(createdProduct)
   } catch (error) {
     console.error('Create product error:', error)
-    res.status(400).json({ message: error.message || 'Invalid product data' })
+    if (error.name === 'ValidationError') {
+      return res.status(400).json({ code: 'INVALID_PRODUCT', message: 'Invalid product data', fields: error.errors })
+    }
+    return res.status(500).json({ code: 'PRODUCT_CREATE_FAILED', message: 'Unable to create product' })
   }
 }
 
@@ -174,82 +152,65 @@ const createProduct = async (req, res) => {
 // @route   PUT /api/products/:id
 // @access  Private/Admin
 const updateProduct = async (req, res) => {
+  let product
   try {
-    const {
-      name,
-      price,
-      description,
-      image,
-      image_r2,
-      image_r2_variants,
-      images,
-      images_r2,
-      brand,
-      category,
-      countInStock,
-      condition,
-      specifications,
-      offer,
-    } = req.body
+    product = await Product.findById(req.params.id)
+    if (!product) return res.status(404).json({ code: 'PRODUCT_NOT_FOUND', message: 'Product not found' })
 
-    const product = await Product.findById(req.params.id)
-
-    if (product) {
-      // Save old R2 URL for cleanup
-      const oldImageR2 = product.image_r2
-
-      product.name = name || product.name
-      product.price = price || product.price
-      product.description = description || product.description
-      product.image = image || product.image
-      if (image_r2 !== undefined) product.image_r2 = image_r2
-      if (image_r2_variants !== undefined) product.image_r2_variants = image_r2_variants
-      product.images = images || product.images
-      if (images_r2 !== undefined) product.images_r2 = images_r2
-      product.brand = brand || product.brand
-      product.category = category || product.category
-      product.countInStock = countInStock ?? product.countInStock
-      if (condition !== undefined) {
-        product.condition = condition || 'New'
-      }
-      product.specifications = specifications || product.specifications
-      if (offer !== undefined) {
-        // Basic validation: ensure amount is non-negative and type is valid
-        const nextOffer = offer || {}
-        if (nextOffer.amount !== undefined && Number(nextOffer.amount) < 0) {
-          return res.status(400).json({ message: 'Offer amount must be >= 0' })
-        }
-        if (
-          nextOffer.type &&
-          !['percentage', 'fixed'].includes(String(nextOffer.type))
-        ) {
-          return res
-            .status(400)
-            .json({ message: 'Offer type must be percentage or fixed' })
-        }
-        product.offer = {
-          ...product.offer?.toObject?.(),
-          ...nextOffer,
-        }
-      }
-
-      const updatedProduct = await product.save()
-
-      // Cleanup old R2 image if main image changed
-      if (product.image_r2 !== oldImageR2) {
-        await cleanupOldMainImage({ image_r2: oldImageR2 }, product.image_r2)
-      }
-
-      // Invalidate cached product listings so changes reflect in grids/cards
-      await clearCache('cache:/api/products')
-
-      res.json(updatedProduct)
-    } else {
-      res.status(404)
-      throw new Error('Product not found')
+    const payload = req.body || {}
+    const existing = product.toObject ? product.toObject() : product
+    const nextValues = {
+      ...existing,
+      ...payload,
+      image: hasOwn(payload, 'image') ? payload.image : (payload.image_r2 !== undefined ? payload.image_r2 : existing.image),
     }
+    const validationErrors = validateProductPayload(payload, { partial: true, existing: nextValues })
+    if (Object.keys(validationErrors).length > 0) {
+      return res.status(400).json({ code: 'INVALID_PRODUCT', message: Object.values(validationErrors)[0], fields: validationErrors })
+    }
+
+    const oldImageR2 = product.image_r2
+    const oldGalleryR2 = Array.isArray(product.images_r2) ? [...product.images_r2] : []
+    const assignableFields = [
+      'name', 'price', 'description', 'image', 'image_r2', 'image_r2_variants',
+      'images', 'images_r2', 'brand', 'category', 'countInStock', 'condition',
+      'specifications',
+    ]
+    for (const field of assignableFields) {
+      if (hasOwn(payload, field)) product[field] = payload[field]
+    }
+    if (hasOwn(payload, 'offer')) {
+      const offerError = validateOffer(payload.offer, product.price)
+      if (offerError) return res.status(400).json({ code: 'INVALID_OFFER', message: offerError })
+      product.offer = payload.offer
+    }
+    if (hasOwn(payload, 'image_r2') && !hasOwn(payload, 'image')) product.image = payload.image_r2 || product.image
+    if (hasOwn(payload, 'image') && !hasOwn(payload, 'image_r2') && product.image === oldImageR2) product.image_r2 = null
+
+    const updatedProduct = await product.save()
+
+    const removedGallery = oldGalleryR2.filter((url) => !product.images_r2?.includes(url))
+    const cleanupKeys = removedGallery
+      .map((url) => imageStorage.extractKey(url))
+      .filter(Boolean)
+    if (product.image_r2 !== oldImageR2 && oldImageR2) {
+      const key = imageStorage.extractKey(oldImageR2)
+      if (key) cleanupKeys.push(key)
+    }
+    const mediaCleanup = cleanupKeys.length > 0 ? await imageStorage.deleteFile([...new Set(cleanupKeys)]) : { deleted: [], failed: [] }
+
+    await clearCache()
+    return res.json({
+      ...updatedProduct.toObject(),
+      mediaCleanup: mediaCleanup.failed.length > 0 ? { warning: 'Product saved, but some old media could not be removed', failed: mediaCleanup.failed } : undefined,
+    })
   } catch (error) {
-    res.status(404).json({ message: 'Product not found' })
+    console.error('Update product error:', error)
+    if (error.name === 'ValidationError') {
+      return res.status(400).json({ code: 'INVALID_PRODUCT', message: 'Invalid product data', fields: error.errors })
+    }
+    if (error.name === 'CastError') return res.status(400).json({ code: 'INVALID_PRODUCT_ID', message: 'Invalid product id' })
+    return res.status(500).json({ code: 'PRODUCT_UPDATE_FAILED', message: 'Unable to update product' })
   }
 }
 
@@ -258,22 +219,25 @@ const updateProduct = async (req, res) => {
 // @access  Private/Admin
 const deleteProduct = async (req, res) => {
   try {
-    console.log('DELETE /api/products/:id called with id:', req.params.id)
     const product = await Product.findById(req.params.id)
-    console.log('Product found:', product?.name)
-    if (product) {
-      // Delete R2 images before removing from DB
-      await deleteProductR2Images(product)
-      await Product.findByIdAndDelete(req.params.id)
-      await clearCache()
-      res.json({ message: 'Product removed' })
-    } else {
-      res.status(404)
-      throw new Error('Product not found')
-    }
+    if (!product) return res.status(404).json({ code: 'PRODUCT_NOT_FOUND', message: 'Product not found' })
+
+    // Delete the document first so media cleanup cannot make a successful
+    // product deletion look like a failed request.
+    await Product.findByIdAndDelete(req.params.id)
+    const mediaCleanup = await deleteProductR2Images(product)
+    await clearCache()
+
+    return res.json({
+      message: 'Product removed',
+      mediaCleanup: mediaCleanup.failed.length > 0
+        ? { warning: 'Product removed, but some media could not be deleted', failed: mediaCleanup.failed }
+        : { deleted: mediaCleanup.deleted.length, failed: [] },
+    })
   } catch (error) {
     console.error('Delete error:', error)
-    res.status(404).json({ message: 'Product not found' })
+    if (error.name === 'CastError') return res.status(400).json({ code: 'INVALID_PRODUCT_ID', message: 'Invalid product id' })
+    return res.status(500).json({ code: 'PRODUCT_DELETE_FAILED', message: 'Unable to delete product' })
   }
 }
 

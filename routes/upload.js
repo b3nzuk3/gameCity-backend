@@ -45,6 +45,7 @@ router.post('/', protect, admin, (req, res) => {
       }
 
       const urls = uploadResults.filter((result) => result.url).map((result) => result.url)
+      const keys = uploadResults.filter((result) => result.url).map((result) => result.key)
       const variants = uploadResults
         .filter((result) => result.url && result.variants)
         .map((result) => result.variants)
@@ -52,6 +53,7 @@ router.post('/', protect, admin, (req, res) => {
 
       return res.json({
         urls,
+        keys,
         variants: variants.length > 0 ? variants : undefined,
         uploaded: urls.length,
         failed: failures.length,
