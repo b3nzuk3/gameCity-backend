@@ -1,6 +1,7 @@
 const express = require('express')
 const multer = require('multer')
 const imageStorage = require('../services/imageStorageService')
+const mediaReference = require('../services/mediaReferenceService')
 const { protect, admin } = require('../middleware/authMiddleware')
 const { isOwnedMediaKey } = require('../utils/mediaKeyValidation')
 
@@ -79,8 +80,16 @@ router.post('/delete', protect, admin, async (req, res) => {
       return res.status(400).json({ code: 'INVALID_MEDIA_KEY', error: 'One or more media keys are not valid GameCity media keys' })
     }
 
-    await imageStorage.deleteFile(keys)
-    return res.json({ message: `Deleted ${keys.length} image(s)` })
+    // Reference-safe rollback: only delete keys (and derived variants) that no
+    // Product document references. Protects against the lost-response race
+    // where a save actually succeeded server-side but the client believed it
+    // failed and asks to clean up the just-uploaded media.
+    const result = await mediaReference.cleanupUnreferencedMedia(keys)
+    const skippedCount = keys.length - result.deleted.length
+    const message = skippedCount > 0
+      ? `Deleted ${result.deleted.length} image(s); ${skippedCount} kept because a product now references them`
+      : `Deleted ${keys.length} image(s)`
+    return res.json({ message, deleted: result.deleted, protected: result.protected })
   } catch (error) {
     console.error('Delete error:', error)
     return res.status(500).json({ code: 'DELETE_FAILED', error: 'Failed to delete images' })

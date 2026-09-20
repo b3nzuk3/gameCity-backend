@@ -56,6 +56,28 @@ async function deleteFile(keys) {
   return { deleted, failed }
 }
 
+/**
+ * Delete exactly the given keys without deriving variant keys.
+ * Used by reference-safe cleanup paths that pass an explicit, already
+ * complete key list (base + any genuinely unreferenced variants).
+ */
+async function deleteExactKeys(keys) {
+  const values = Array.isArray(keys) ? keys : [keys]
+  const deleted = []
+  const failed = []
+  for (const key of values) {
+    if (!key) continue
+    try {
+      await r2Service.deleteFromR2(key)
+      deleted.push(key)
+    } catch (err) {
+      console.error(`[ImageStorage] Failed to delete ${key}:`, err.message)
+      failed.push({ key, error: err.message })
+    }
+  }
+  return { deleted, failed }
+}
+
 function getPublicUrl(key) {
   return r2Service.getPublicUrl(key)
 }
@@ -67,4 +89,4 @@ function extractKey(url) {
   return url.replace(`${publicUrl}/`, '')
 }
 
-module.exports = { upload, deleteFile, getPublicUrl, extractKey }
+module.exports = { upload, deleteFile, deleteExactKeys, getPublicUrl, extractKey }

@@ -2,40 +2,42 @@ const Product = require('../models/productModel')
 const Order = require('../models/orderModel')
 const { clearCache } = require('../middleware/cacheMiddleware')
 const { resolveProductImages, resolveProductImagesBulk } = require('../utils/imageUtils')
-const imageStorage = require('../services/imageStorageService')
+const mediaReference = require('../services/mediaReferenceService')
 const { hasOwn, validateOffer, validateProductPayload } = require('../utils/productValidation')
 
-async function deleteProductR2Images(product) {
-  const keysToDelete = []
-  if (product.image_r2) {
-    const key = imageStorage.extractKey(product.image_r2)
-    if (key) keysToDelete.push(key)
-  }
-  for (const url of product.images_r2 || []) {
-    const key = imageStorage.extractKey(url)
-    if (key) keysToDelete.push(key)
-  }
-  if (keysToDelete.length === 0) return { deleted: [], failed: [] }
-
-  const result = await imageStorage.deleteFile([...new Set(keysToDelete)])
-  if (result.failed.length > 0) {
-    console.error(`[ProductController] Failed to delete ${result.failed.length} R2 image object(s) for product ${product._id}`)
-  }
-  return result
-}
-
 /**
- * Delete old R2 images when main image changes.
+ * Normalize the primary image pair (image, image_r2) for an update payload.
+ *
+ * Rules:
+ *  1. Explicit `payload.image_r2` is authoritative for the R2 field, and
+ *     mirrors into `image` when `image` is absent (preserves prior sync
+ *     behavior for admin uploads).
+ *  2. `payload.image` that is an R2 URL with `image_r2` omitted means the
+ *     SAME image relationship — pair it. Previously this case nulled
+ *     `image_r2`, which made cleanup treat the live primary object as
+ *     removed and delete it from R2 while `image` kept referencing it.
+ *  3. A non-R2 `payload.image` on a product whose legacy `image` mirrored
+ *     `image_r2` replaces the primary; the R2 pair is cleared and cleanup
+ *     (reference-gated) may reclaim the old object.
+ *  4. Neither field in the payload → both unchanged (non-image edits can
+ *     never alter the media relationship).
  */
-async function cleanupOldMainImage(oldProduct, newImageUrl) {
-  if (!oldProduct.image_r2 || oldProduct.image_r2 === newImageUrl) return
-
-  try {
-    const key = imageStorage.extractKey(oldProduct.image_r2)
-    if (key) await imageStorage.deleteFile([key])
-  } catch (err) {
-    console.error(`[ProductController] Failed to cleanup old main image:`, err.message)
+function resolvePrimaryImagePair({ payload, existingImage, existingImageR2 }) {
+  if (hasOwn(payload, 'image_r2')) {
+    const imageR2 = payload.image_r2 || null
+    const image = hasOwn(payload, 'image') ? payload.image : (imageR2 || existingImage)
+    return [image, imageR2]
   }
+
+  if (hasOwn(payload, 'image')) {
+    const image = payload.image
+    if (mediaReference.isR2Url(image)) return [image, image]
+    if (existingImageR2 && image === existingImageR2) return [image, existingImageR2]
+    if (existingImage && existingImage === existingImageR2) return [image, null]
+    return [image, existingImageR2]
+  }
+
+  return [existingImage, existingImageR2]
 }
 
 // @desc    Fetch all products
@@ -169,8 +171,17 @@ const updateProduct = async (req, res) => {
       return res.status(400).json({ code: 'INVALID_PRODUCT', message: Object.values(validationErrors)[0], fields: validationErrors })
     }
 
-    const oldImageR2 = product.image_r2
-    const oldGalleryR2 = Array.isArray(product.images_r2) ? [...product.images_r2] : []
+    // Snapshot the pre-update media state (all fields) — this is what cleanup
+    // compares against. Non-image edits produce an identical snapshot, so
+    // they can never trigger a deletion.
+    const oldProductSnapshot = product.toObject()
+
+    const [nextImage, nextImageR2] = resolvePrimaryImagePair({
+      payload,
+      existingImage: product.image,
+      existingImageR2: product.image_r2,
+    })
+
     const assignableFields = [
       'name', 'price', 'description', 'image', 'image_r2', 'image_r2_variants',
       'images', 'images_r2', 'brand', 'category', 'countInStock', 'condition',
@@ -184,20 +195,25 @@ const updateProduct = async (req, res) => {
       if (offerError) return res.status(400).json({ code: 'INVALID_OFFER', message: offerError })
       product.offer = payload.offer
     }
-    if (hasOwn(payload, 'image_r2') && !hasOwn(payload, 'image')) product.image = payload.image_r2 || product.image
-    if (hasOwn(payload, 'image') && !hasOwn(payload, 'image_r2') && product.image === oldImageR2) product.image_r2 = null
+    // Assign the normalized primary pair AFTER payload merging so the
+    // payload cannot desynchronize the image/image_r2 relationship.
+    if (hasOwn(payload, 'image') || hasOwn(payload, 'image_r2')) {
+      product.image = nextImage
+      product.image_r2 = nextImageR2
+    }
 
     const updatedProduct = await product.save()
 
-    const removedGallery = oldGalleryR2.filter((url) => !product.images_r2?.includes(url))
-    const cleanupKeys = removedGallery
-      .map((url) => imageStorage.extractKey(url))
-      .filter(Boolean)
-    if (product.image_r2 !== oldImageR2 && oldImageR2) {
-      const key = imageStorage.extractKey(oldImageR2)
-      if (key) cleanupKeys.push(key)
+    // Cleanup runs strictly after a successful DB save (safe direction) and
+    // is reference-safe: only objects that vanished from the final product
+    // state AND are referenced by no Product are deleted.
+    let mediaCleanup = { deleted: [], failed: [], protected: [] }
+    try {
+      mediaCleanup = await mediaReference.cleanupReplacedMedia(oldProductSnapshot, updatedProduct.toObject())
+    } catch (cleanupErr) {
+      // Leave orphaned objects rather than failing a completed save.
+      console.error('[ProductController] Reference-safe media cleanup failed:', cleanupErr.message)
     }
-    const mediaCleanup = cleanupKeys.length > 0 ? await imageStorage.deleteFile([...new Set(cleanupKeys)]) : { deleted: [], failed: [] }
 
     await clearCache()
     return res.json({
@@ -225,7 +241,16 @@ const deleteProduct = async (req, res) => {
     // Delete the document first so media cleanup cannot make a successful
     // product deletion look like a failed request.
     await Product.findByIdAndDelete(req.params.id)
-    const mediaCleanup = await deleteProductR2Images(product)
+
+    // Reference-safe media cleanup: deletes only objects whose full media set
+    // is no longer referenced by ANY remaining Product document.
+    let mediaCleanup
+    try {
+      mediaCleanup = await mediaReference.cleanupProductMedia(product.toObject())
+    } catch (cleanupErr) {
+      console.error('[ProductController] Reference-safe media cleanup failed:', cleanupErr.message)
+      mediaCleanup = { deleted: [], failed: [], protected: [] }
+    }
     await clearCache()
 
     return res.json({
