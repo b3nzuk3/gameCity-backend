@@ -20,4 +20,22 @@ function stableProductSort(sort = '-createdAt') {
   return sortSpec
 }
 
-module.exports = { stableProductSort }
+const PUBLIC_SORTS = {
+  // Match the existing catalog's canonical URL precedence for equal names.
+  name: 'name -_id',
+  price: 'price',
+  '-price': '-price',
+  '-rating': '-rating',
+  // Keep the existing frontend's sort values working while it migrates to
+  // the API contract's directional values.
+  'price-low': 'price',
+  'price-high': '-price',
+  rating: '-rating',
+}
+
+function publicProductSort(sort) {
+  const requested = typeof sort === 'string' ? sort.trim() : ''
+  return stableProductSort(PUBLIC_SORTS[requested] || '-createdAt')
+}
+
+module.exports = { stableProductSort, publicProductSort }

@@ -18,7 +18,7 @@ const {
 } = require('../controllers/productController')
 const { protect, admin } = require('../middleware/authMiddleware')
 const { buildProductFilterQuery } = require('../utils/productFilters')
-const { stableProductSort } = require('../utils/productPagination')
+const { publicProductSort } = require('../utils/productPagination')
 
 const categoryMapping = {
   'pre-built': 'PRE-BUILT',
@@ -39,6 +39,43 @@ const categoryMapping = {
 
 const storage = multer.memoryStorage()
 const upload = multer({ storage })
+
+const MAX_PUBLIC_LIMIT = 100
+
+const parsePublicPagination = (query, defaultLimit) => {
+  const parseValue = (name, fallback, maximum) => {
+    if (query[name] === undefined) return fallback
+    if (Array.isArray(query[name]) || !/^[1-9]\d*$/.test(String(query[name]))) {
+      const error = new Error(`${name} must be a positive integer`)
+      error.status = 400
+      error.code = 'INVALID_PAGINATION'
+      throw error
+    }
+    const value = Number(query[name])
+    if (!Number.isSafeInteger(value) || (maximum && value > maximum)) {
+      const error = new Error(`${name} is outside the allowed range`)
+      error.status = 400
+      error.code = 'INVALID_PAGINATION'
+      throw error
+    }
+    return value
+  }
+
+  return {
+    page: parseValue('page', 1),
+    limit: parseValue('limit', defaultLimit, MAX_PUBLIC_LIMIT),
+  }
+}
+
+const sendPublicQueryError = (res, error, fallbackMessage) => {
+  if (error?.status !== 400) return false
+  res.status(400).json({
+    success: false,
+    code: error.code || 'INVALID_QUERY',
+    message: error.message || fallbackMessage,
+  })
+  return true
+}
 
 // Mock products data
 const mockProducts = [
@@ -80,27 +117,9 @@ const mockProducts = [
 // Get all products with pagination, filtering, and sorting
 router.get('/', cacheMiddleware(300), async (req, res) => {
   try {
-    const page = parseInt(req.query.page) || 1
-    const limit = parseInt(req.query.limit) || 50
-    const category = req.query.category
-    const sort = stableProductSort(req.query.sort || '-createdAt')
-    const search = req.query.search
-
-    console.log(`ProductRoutes: limit=${limit}, page=${page}`)
-
-    const query = {}
-
-    if (category && category !== 'all') {
-      query.category = { $regex: category.replace(/-/g, ' '), $options: 'i' }
-    }
-
-    if (search) {
-      query.$or = [
-        { name: { $regex: search, $options: 'i' } },
-        { description: { $regex: search, $options: 'i' } },
-      ]
-    }
-
+    const { page, limit } = parsePublicPagination(req.query, 50)
+    const sort = publicProductSort(req.query.sort)
+    const query = buildProductFilterQuery(req.query, { categoryMapping })
     const skip = (page - 1) * limit
 
     const [products, total] = await Promise.all([
@@ -109,8 +128,6 @@ router.get('/', cacheMiddleware(300), async (req, res) => {
     ])
 
     const totalPages = Math.ceil(total / limit)
-
-    // Resolve images: prefer R2 URLs, fallback to Cloudinary
     const resolvedProducts = resolveProductImagesBulk(products)
 
     res.json({
@@ -121,6 +138,7 @@ router.get('/', cacheMiddleware(300), async (req, res) => {
       hasMore: page < totalPages,
     })
   } catch (error) {
+    if (sendPublicQueryError(res, error, 'Invalid product query')) return
     console.error('Error fetching products:', error)
     res.status(500).json({
       success: false,
@@ -133,17 +151,14 @@ router.get('/brands', getUniqueBrands)
 
 router.get('/category/:category/count', cacheMiddleware(300), async (req, res) => {
   try {
-    const { category } = req.params
-    const dbCategory = categoryMapping[category] || category
-    const categoryQuery = category === 'all' ? {} : { category: dbCategory }
-    const filterQuery = buildProductFilterQuery(req.query)
-    const total = await Product.countDocuments({
-      ...categoryQuery,
-      ...filterQuery,
+    const query = buildProductFilterQuery(req.query, {
+      categoryMapping,
+      category: req.params.category,
     })
-
+    const total = await Product.countDocuments(query)
     res.json({ total })
   } catch (error) {
+    if (sendPublicQueryError(res, error, 'Invalid product query')) return
     console.error('Error counting filtered category products:', error)
     res.status(500).json({
       success: false,
@@ -180,31 +195,13 @@ router.get('/:id', cacheMiddleware(300), async (req, res) => {
 // Get products by category with caching
 router.get('/category/:category', cacheMiddleware(300), async (req, res) => {
   try {
-    const { category } = req.params
-    const page = parseInt(req.query.page) || 1
-    const limit = parseInt(req.query.limit) || 10
-    const sort = stableProductSort(req.query.sort || '-createdAt')
-    const search = req.query.search
-
-    // Map URL slugs to database category names
-    const dbCategory = categoryMapping[category] || category
-    const query = category === 'all' ? {} : { category: dbCategory }
-
-    if (search) {
-      // Escape special regex characters to prevent MongoDB errors
-      const escapedSearch = search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-      query.$or = [
-        { name: { $regex: escapedSearch, $options: 'i' } },
-        { description: { $regex: escapedSearch, $options: 'i' } },
-        { brand: { $regex: escapedSearch, $options: 'i' } },
-      ]
-    }
-
+    const { page, limit } = parsePublicPagination(req.query, 10)
+    const sort = publicProductSort(req.query.sort)
+    const query = buildProductFilterQuery(req.query, {
+      categoryMapping,
+      category: req.params.category,
+    })
     const skip = (page - 1) * limit
-
-    console.log(
-      `CategoryRoute: category=${category}, dbCategory=${dbCategory}, page=${page}, limit=${limit}, search=${search}`
-    )
 
     const [products, total] = await Promise.all([
       Product.find(query).sort(sort).skip(skip).limit(limit).lean(),
@@ -212,12 +209,6 @@ router.get('/category/:category', cacheMiddleware(300), async (req, res) => {
     ])
 
     const totalPages = Math.ceil(total / limit)
-
-    console.log(
-      `CategoryRoute: category=${category}, dbCategory=${dbCategory}, page=${page}, limit=${limit}, search=${search}`
-    )
-
-    // Resolve images: prefer R2 URLs, fallback to Cloudinary
     const resolvedProducts = resolveProductImagesBulk(products)
 
     res.json({
@@ -228,6 +219,7 @@ router.get('/category/:category', cacheMiddleware(300), async (req, res) => {
       hasMore: page < totalPages,
     })
   } catch (error) {
+    if (sendPublicQueryError(res, error, 'Invalid product query')) return
     console.error('Error fetching products by category:', error)
     res.status(500).json({
       success: false,

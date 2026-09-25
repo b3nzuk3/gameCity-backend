@@ -1,6 +1,6 @@
 const assert = require('node:assert/strict')
 const test = require('node:test')
-const { stableProductSort } = require('../utils/productPagination')
+const { stableProductSort, publicProductSort } = require('../utils/productPagination')
 
 test('product pagination sorts deterministically by creation date then id by default', () => {
   assert.deepEqual(stableProductSort(), { createdAt: -1, _id: 1 })
@@ -28,4 +28,12 @@ test('product pagination accepts comma-separated sort fields and ignores empty i
     _id: 1,
   })
   assert.deepEqual(stableProductSort(''), { createdAt: -1, _id: 1 })
+})
+
+test('public catalog sort mapping only exposes supported fields and keeps the id tie-breaker', () => {
+  assert.deepEqual(publicProductSort('name'), { name: 1, _id: -1 })
+  assert.deepEqual(publicProductSort('-price'), { price: -1, _id: 1 })
+  assert.deepEqual(publicProductSort('price'), { price: 1, _id: 1 })
+  assert.deepEqual(publicProductSort('-rating'), { rating: -1, _id: 1 })
+  assert.deepEqual(publicProductSort('createdAt'), { createdAt: -1, _id: 1 })
 })
