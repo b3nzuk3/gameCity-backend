@@ -18,6 +18,7 @@ const {
 } = require('../controllers/productController')
 const { protect, admin } = require('../middleware/authMiddleware')
 const { buildProductFilterQuery } = require('../utils/productFilters')
+const { stableProductSort } = require('../utils/productPagination')
 
 const categoryMapping = {
   'pre-built': 'PRE-BUILT',
@@ -82,7 +83,7 @@ router.get('/', cacheMiddleware(300), async (req, res) => {
     const page = parseInt(req.query.page) || 1
     const limit = parseInt(req.query.limit) || 50
     const category = req.query.category
-    const sort = req.query.sort || '-createdAt'
+    const sort = stableProductSort(req.query.sort || '-createdAt')
     const search = req.query.search
 
     console.log(`ProductRoutes: limit=${limit}, page=${page}`)
@@ -182,7 +183,7 @@ router.get('/category/:category', cacheMiddleware(300), async (req, res) => {
     const { category } = req.params
     const page = parseInt(req.query.page) || 1
     const limit = parseInt(req.query.limit) || 10
-    const sort = req.query.sort || '-createdAt'
+    const sort = stableProductSort(req.query.sort || '-createdAt')
     const search = req.query.search
 
     // Map URL slugs to database category names
