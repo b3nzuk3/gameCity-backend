@@ -157,6 +157,7 @@ app.get('/api/health', (req, res) => {
     status: 'OK',
     database:
       mongoose.connection.readyState === 1 ? 'Connected' : 'Disconnected',
+    release: process.env.RENDER_GIT_COMMIT || 'unknown',
     timestamp: new Date().toISOString(),
   });
 });
