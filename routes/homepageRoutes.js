@@ -4,6 +4,7 @@ const {
   getPublicHomepage,
   getAdminHomepage,
   updateHero,
+  updateAnnouncement,
   createSection,
   updateSection,
   deleteSection,
@@ -16,6 +17,7 @@ const router = express.Router()
 router.get('/public/homepage', getPublicHomepage)
 router.get('/admin/homepage', protect, admin, getAdminHomepage)
 router.put('/admin/homepage/hero', protect, admin, updateHero)
+router.put('/admin/homepage/announcement', protect, admin, updateAnnouncement)
 router.post('/admin/homepage/sections', protect, admin, createSection)
 router.put('/admin/homepage/sections/reorder', protect, admin, reorderSections)
 router.put('/admin/homepage/sections/:id/products', protect, admin, updateSectionProducts)

@@ -17,6 +17,17 @@ const heroSchema = new mongoose.Schema(
   { _id: false },
 )
 
+const announcementSchema = new mongoose.Schema(
+  {
+    enabled: { type: Boolean, default: true },
+    text: { type: String, trim: true, maxlength: 240, default: 'Gaming PCs, components & accessories • Delivery across Kenya' },
+    mobileText: { type: String, trim: true, maxlength: 120, default: 'Delivery across Kenya' },
+    linkLabel: { type: String, trim: true, maxlength: 80, default: 'Shop now' },
+    linkHref: { type: String, trim: true, maxlength: 500, default: '/category/all' },
+  },
+  { _id: false },
+)
+
 const productReferenceSchema = new mongoose.Schema(
   {
     product: { type: mongoose.Schema.Types.ObjectId, ref: 'Product', required: true },
@@ -54,6 +65,7 @@ const homepageSchema = new mongoose.Schema(
   {
     key: { type: String, required: true, unique: true, default: 'default' },
     hero: { type: heroSchema, default: () => ({}) },
+    announcement: { type: announcementSchema, default: () => ({}) },
     sections: { type: [sectionSchema], default: [] },
   },
   { timestamps: true },

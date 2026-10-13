@@ -20,6 +20,14 @@ const DEFAULT_HERO = {
   enabled: true,
 }
 
+const DEFAULT_ANNOUNCEMENT = {
+  enabled: true,
+  text: 'Gaming PCs, components & accessories • Delivery across Kenya',
+  mobileText: 'Delivery across Kenya',
+  linkLabel: 'Shop now',
+  linkHref: '/category/all',
+}
+
 class HomepageValidationError extends Error {
   constructor(message, code = 'HOMEPAGE_VALIDATION_FAILED') {
     super(message)
@@ -78,6 +86,31 @@ function validateHeroPayload(payload = {}) {
   if (hero.title !== undefined && !hero.title) throw new HomepageValidationError('title is required')
   if (hero.description !== undefined && !hero.description) throw new HomepageValidationError('description is required')
   return hero
+}
+
+function validateAnnouncementPayload(payload = {}) {
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) throw new HomepageValidationError('Announcement payload must be an object')
+  const announcement = {}
+  for (const [field, max] of [['text', 240], ['mobileText', 120], ['linkLabel', 80], ['linkHref', 500]]) {
+    if (payload[field] === undefined) continue
+    if (typeof payload[field] !== 'string') throw new HomepageValidationError(`${field} must be a string`)
+    announcement[field] = payload[field].trim()
+    if (announcement[field].length > max) throw new HomepageValidationError(`${field} is too long`)
+  }
+  if (announcement.text !== undefined && !announcement.text) throw new HomepageValidationError('Announcement text is required')
+  if (announcement.linkHref) {
+    const href = announcement.linkHref
+    if (/[\\\u0000-\u0020\u007f]/.test(href) || !isSafeHref(href)) throw new HomepageValidationError('linkHref must be a local path or an http(s) URL')
+    if (!href.startsWith('/')) {
+      const parsed = new URL(href)
+      if (parsed.username || parsed.password) throw new HomepageValidationError('linkHref must not contain credentials')
+    }
+  }
+  if (payload.enabled !== undefined) {
+    if (typeof payload.enabled !== 'boolean') throw new HomepageValidationError('enabled must be a boolean')
+    announcement.enabled = payload.enabled
+  }
+  return announcement
 }
 
 function validateSectionPayload(payload = {}) {
@@ -139,6 +172,11 @@ function normalizeHero(hero) {
   return { ...DEFAULT_HERO, ...(values || {}) }
 }
 
+function normalizeAnnouncement(announcement) {
+  const values = typeof announcement?.toObject === 'function' ? announcement.toObject() : announcement
+  return Object.fromEntries(Object.entries(DEFAULT_ANNOUNCEMENT).map(([key, fallback]) => [key, values?.[key] ?? fallback]))
+}
+
 function productResponse(product) {
   if (!product) return null
   const resolved = resolveProductImages(product)
@@ -188,12 +226,13 @@ function adminResponse(homepage) {
   return {
     configured: Boolean(homepage),
     hero: normalizeHero(homepage?.hero),
+    announcement: normalizeAnnouncement(homepage?.announcement),
     sections: sections.map((section) => sectionResponse(section, { includeMissing: true })),
   }
 }
 
 function publicResponse(homepage) {
-  if (!homepage) return { configured: false, hero: normalizeHero(DEFAULT_HERO), sections: [] }
+  if (!homepage) return { configured: false, hero: normalizeHero(DEFAULT_HERO), announcement: normalizeAnnouncement(), sections: [] }
   const sections = (homepage.sections || [])
     .filter((section) => section.enabled)
     .slice()
@@ -202,6 +241,7 @@ function publicResponse(homepage) {
   return {
     configured: true,
     hero: homepage.hero?.enabled === false ? null : normalizeHero(homepage.hero),
+    announcement: normalizeAnnouncement(homepage.announcement),
     sections,
   }
 }
@@ -237,6 +277,19 @@ async function updateHero(req, res, next) {
     const hero = validateHeroPayload(req.body)
     const homepage = await getHomepageDocument({ create: true })
     homepage.hero = { ...normalizeHero(homepage.hero), ...hero }
+    await homepage.save()
+    await clearCache('cache:/api/public/homepage')
+    return res.json(adminResponse(await populateHomepage(homepage)))
+  } catch (error) {
+    return next(error)
+  }
+}
+
+async function updateAnnouncement(req, res, next) {
+  try {
+    const announcement = validateAnnouncementPayload(req.body)
+    const homepage = await getHomepageDocument({ create: true })
+    homepage.announcement = { ...normalizeAnnouncement(homepage.announcement), ...announcement }
     await homepage.save()
     await clearCache('cache:/api/public/homepage')
     return res.json(adminResponse(await populateHomepage(homepage)))
@@ -344,8 +397,10 @@ async function updateSectionProducts(req, res, next) {
 
 module.exports = {
   DEFAULT_HERO,
+  DEFAULT_ANNOUNCEMENT,
   HomepageValidationError,
   validateHeroPayload,
+  validateAnnouncementPayload,
   validateSectionPayload,
   validateUniqueProductIds,
   publicResponse,
@@ -354,6 +409,7 @@ module.exports = {
   getPublicHomepage,
   getAdminHomepage,
   updateHero,
+  updateAnnouncement,
   createSection,
   updateSection,
   deleteSection,
