@@ -60,7 +60,7 @@ function validateHeroPayload(payload = {}) {
   for (const field of ['primaryCtaHref', 'secondaryCtaHref']) {
     if (payload[field] !== undefined) {
       hero[field] = asString(payload[field])
-      if (!isSafeHref(hero[field], { required: true }) || hero[field].length > 500) {
+      if (!isSafeHref(hero[field], { required: field === 'primaryCtaHref' }) || hero[field].length > 500) {
         throw new HomepageValidationError(`${field} must be a local path or an http(s) URL`)
       }
     }
@@ -135,7 +135,8 @@ async function getHomepageDocument({ create = false } = {}) {
 }
 
 function normalizeHero(hero) {
-  return { ...DEFAULT_HERO, ...(hero || {}) }
+  const values = typeof hero?.toObject === 'function' ? hero.toObject() : hero
+  return { ...DEFAULT_HERO, ...(values || {}) }
 }
 
 function productResponse(product) {
